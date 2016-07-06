@@ -23,6 +23,16 @@ def die(msg):
 
 class WallpaperSetter:
 
+    def get_screen_count(self):
+        """get the number of screens"""
+        # this is kind of a hack...
+        return (
+            subprocess
+            .check_output(["xrandr", "-q"])
+            .decode("ascii")
+            .count(" connected ")
+        )
+
     def find_wallpapers(self, patterns):
         """Return list of wallpapers in given directories via globbing."""
         wallpapers = []
@@ -54,20 +64,37 @@ class WallpaperSetter:
         self.set_line(self.screen_id + 1, line)
         self.feh(self.current)
 
-    def next_wallpapers(self):
+    def next_wallpaper(self):
         self.current_id = (self.current_id + 1) % self.total
-        self.screen_id = (self.screen_id + 1) % 2
-        # self.current[self.screen_id] = self.wallpapers[self.current_id]
+        self.screen_id = (self.screen_id + 1) % self.screen_count
         self.set_wallpaper(self.screen_id, self.wallpapers[self.current_id])
+
+    def previous_wallpaper(self):
+        """go back one wallpaper change"""
+        prev_id = (self.current_id - self.screen_count) % self.total
+        self.set_wallpaper(self.screen_id, self.wallpapers[prev_id])
+        self.current_id = (self.current_id - 1) % self.total
+        self.screen_id = (self.screen_id - 1) % self.screen_count
 
     def update_wallpapers(self):
         self.wallpaper_update_timer = threading.Timer(
             self.wallpaper_update_delay, self.update_wallpapers)
         self.wallpaper_update_timer.start()
-        self.next_wallpapers()
+        self.next_wallpaper()
+
+    def start_wallpaper_update_timer(self):
+        self.wallpaper_update_timer = threading.Timer(
+            self.wallpaper_update_delay, self.update_wallpapers)
+        self.wallpaper_update_timer.start()
+
+    def reset_wallpaper_update_timer(self):
+        self.wallpaper_update_timer.cancel()
+        self.start_wallpaper_update_timer()
 
     def set_line(self, lineno, text=""):
-        if len(text) > self.tty_width - 1:
+        if lineno >= self.tty_height:
+            return
+        if len(text) >= self.tty_width:
             text = text[ 0 : self.tty_width - 2] + "…"
         self.stdscr.addstr(lineno, 0, text)
         self.stdscr.clrtoeol()
@@ -101,21 +128,29 @@ class WallpaperSetter:
         self.wallpapers = self.find_wallpapers(patterns)
 
         random.shuffle(self.wallpapers)
-        self.total = len(self.wallpapers)
-        self.set_line(0, "Found {} wallpapers, updating every {} seconds".format(
-            self.total, self.wallpaper_update_delay))
 
+        self.total = len(self.wallpapers)
         if self.total == 0:
             die("No wallpapers found")
 
-        self.current_id = 2
-        self.screen_id = 0
-        self.current = self.wallpapers[0:2]
-        self.set_line(1, "0: file://" + self.current[0])
-        self.set_line(2, "1: file://" + self.current[1])
+        self.screen_count = self.get_screen_count()
+
+        info = "Found {} wallpapers, updating every {} seconds on {} screens"
+        self.set_line(0, info.format(
+            self.total, self.wallpaper_update_delay, self.screen_count))
+
+        self.screen_id = self.screen_count - 1
+        self.current_id = self.screen_id
+        self.current = self.wallpapers[0 : self.current_id + 1]
+        
+        for s in range(0, self.screen_count):
+            line = "{}: file://{}".format(s, self.current[s])
+            self.set_line(s + 1, line)
+
         self.feh(self.current)
 
-        self.wallpaper_update_timer = threading.Timer(0, self.update_wallpapers)
+        self.wallpaper_update_timer = threading.Timer(
+            self.wallpaper_update_delay, self.update_wallpapers)
         self.wallpaper_update_timer.start()
 
         # stdscr.nodelay(True)
@@ -124,16 +159,21 @@ class WallpaperSetter:
             char = stdscr.getch()
             if char == curses.ERR:
                 continue
+
+            self.set_line(4, "pressed key '{:s}' ({:d})".format(
+                curses.keyname(char).decode("utf-8"), char))
+            
             if char == curses.KEY_RESIZE:
                 self.update_tty_size()
-            c = chr(char)
-            # if c in string.printable and c != "\n":
-            self.set_line(4, "pressed key '" + c + "'")
-            if c == 'q':
+            elif char == curses.KEY_LEFT or char == curses.KEY_DOWN:
+                self.previous_wallpaper()
+                self.reset_wallpaper_update_timer()
+            elif char == curses.KEY_RIGHT or char == curses.KEY_UP:
+                self.next_wallpaper()
+                self.reset_wallpaper_update_timer()
+            elif char == ord('q'):
                 self.wallpaper_update_timer.cancel()
                 return
-            # else:
-            #     self.set_line(4)
             
 
 # run
