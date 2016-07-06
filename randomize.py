@@ -32,36 +32,62 @@ class Interval(Thread):
     See threading.Timer for comparison.
     """
 
-    def __init__(self, interval, function, onfail=noop):
+    def __init__(self, delay, function, onfail=noop):
         Thread.__init__(self)
-        self.interval = interval
+        self.delay = delay
         self.function = function
         self.onfail = onfail #if onfail is not None else noop
         self.interrupted = Event()
-
-    def restart(self):
-        """Set the current waiting interval back to its full duration"""
-        self._restart = True
         self.interrupted.set()
+        self.start_running = Event()
+        self.terminated = False
 
-    def interrupt(self):
+    def is_running(self):
+        """Whether the interval loop is started or stopped"""
+        return not self.interrupted.is_set()
+
+    def start(self):
+        if not self.is_running():
+            self.interrupted.clear()
+            self.start_running.set()
+            if not self.is_alive():
+                Thread.start(self)
+
+    def stop(self):
         """Stop the timer loop and don't execute anything anymore."""
         self.interrupted.set()
 
+    def toggle(self):
+        if self.is_running():
+            self.stop()
+        else:
+            self.start()
+
+    def reset(self):
+        """Set the current waiting delay back to its full duration"""
+        if self.is_running():
+            self.stop()
+            self.start()
+
+    def set_delay(self, delay):
+        self.delay = delay
+        self.reset()
+
+    def terminate(self):
+        self.terminated = True
+        self.interrupted.set()
+        self.start_running.set()
+
     def run(self):
-        self.interrupted.clear()
-        self._restart = False
-        while not self.interrupted.wait(self.interval) or self._restart:
-            if self._restart:
-                self.interrupted.clear()
-                self._restart = False
-            else:
+        while not self.terminated:
+            self.start_running.wait()
+            self.start_running.clear()
+            while not self.interrupted.wait(self.delay):
                 try:
                     self.function()
                 except Exception as exc:
                     self.onfail(exc)
-
-
+        
 ##### Main Class #####
 
 class WallpaperSetter:
@@ -81,6 +107,7 @@ class WallpaperSetter:
         self.screen_count = self.get_screen_count()
 
         with WallpaperSetterUi(self) as self.ui:
+            self.init_wallpapers()
             self.run()
 
     def get_args(self):
@@ -125,7 +152,7 @@ class WallpaperSetter:
         return wallpapers
 
     def get_screen_count(self):
-        """get the number of screens"""
+        """Find out the number of connected screens"""
         # this is kind of a hack...
         return (
             subprocess
@@ -134,28 +161,29 @@ class WallpaperSetter:
             .count(" connected ")
         )
 
-    def run(self):
-        """Set the first wallpapers and start running event loops"""
-
+    def init_wallpapers(self):
+        """Setup basic data structures and put a wallpaper on each screen"""
         info = "Found {} wallpapers, updating every {} seconds on {} screens"
         self.ui.set_line(0, info.format(
             self.total, self.args.wallpaper_update_delay, self.screen_count))
 
-        self.screen_id = self.screen_count - 1
-        self.current_id = self.screen_id
-        self.current = self.wallpapers[0 : self.current_id + 1]
+        self.active_screens = list(range(0, self.screen_count))
+        self.current_id = self.current_screen_idx = self.screen_count - 1
+        self.current_wallpapers = self.wallpapers[0 : self.current_id + 1]
 
         for s in range(0, self.screen_count):
-            line = "{}: file://{}".format(s, self.current[s])
+            line = "{}: file://{}".format(s, self.current_wallpapers[s])
             self.ui.set_line(s + 1, line)
 
-        self.feh(self.current)
+        self.feh(self.current_wallpapers)
 
-
+    def run(self):
+        """Setup threads and event loops"""
         self.ui.on_keypress(curses.KEY_LEFT,  self.rewind)
         self.ui.on_keypress(curses.KEY_UP,    self.rewind)
         self.ui.on_keypress(curses.KEY_DOWN,  self.skip_forward)
         self.ui.on_keypress(curses.KEY_RIGHT, self.skip_forward)
+        self.ui.on_keypress('p', self.toggle)
 
         self.ui_thread = Thread(target=self.ui.run_event_loop)
         self.ui_thread.start()
@@ -172,28 +200,28 @@ class WallpaperSetter:
         signal.signal(signal.SIGINT, self.interrupt)
 
         self.ui_thread.join()
-        self.wallpaper_update_interval.interrupt()
+        self.wallpaper_update_interval.terminate()
         if self.failed:
             raise self.failed
 
-    # def start_wallpaper_update_interval(self):
-    #     """Creates a Interval timer that will call the subsequent updates"""
-    #     self.wallpaper_update_interval = Interval(
-    #         self.args.wallpaper_update_delay, self.next_wallpaper)
-    #     self.wallpaper_update_interval.start()
-
-    # def restart_wallpaper_update_interval(self):
-    #     """Reset the current update timer to its full duration"""
-    #     self.wallpaper_update_interval.cancel()
-    #     self.start_wallpaper_update_interval()
-
     def skip_forward(self):
         self.next_wallpaper()
-        self.wallpaper_update_interval.restart()
+        self.wallpaper_update_interval.reset()
 
     def rewind(self):
         self.previous_wallpaper()
-        self.wallpaper_update_interval.restart()
+        self.wallpaper_update_interval.reset()
+
+    def pause(self):
+        """Stop the wallpaper update loop"""
+        self.wallpaper_update_interval.stop()
+
+    def resume(self):
+        """Continue the wallpaper update loop after it has been paused"""
+        self.wallpaper_update_interval.start()
+    
+    def toggle(self):
+        self.wallpaper_update_interval.toggle()
 
     def interrupt(self, exc=None, *_):
         """Game over, stop everything"""
@@ -208,24 +236,37 @@ class WallpaperSetter:
 
     def set_wallpaper(self, screen_id, wallpaper):
         """High level wallpaper setter"""
-        self.current[screen_id] = wallpaper
+        self.current_wallpapers[screen_id] = wallpaper
         line = "{}: file://{}".format(screen_id, wallpaper)
-        self.ui.set_line(self.screen_id + 1, line)
-        self.feh(self.current)
+        self.ui.set_line(screen_id + 1, line)
+        self.feh(self.current_wallpapers)
+
+    def current_screen(self):
+        return self.active_screens[self.current_screen_idx]
+
+    def next_screen(self):
+        self.current_screen_idx = (
+            (self.current_screen_idx + 1) % len(self.active_screens))
+        return self.current_screen()
+
+    def previous_screen(self):
+        self.current_screen_idx = (
+            (self.current_screen_idx - 1) % len(self.active_screens))
+        return self.current_screen()
 
     def next_wallpaper(self):
         """Cycle forward in the multi-screen wallpaper update loop"""
         self.current_id = (self.current_id + 1) % self.total
-        self.screen_id = (self.screen_id + 1) % self.screen_count
-        self.set_wallpaper(self.screen_id, self.wallpapers[self.current_id])
+        self.set_wallpaper(
+            self.next_screen(), self.wallpapers[self.current_id])
 
     def previous_wallpaper(self):
         """Cycle backward in the multi-screen wallpaper update loop"""
         prev_id = (self.current_id - self.screen_count) % self.total
-        self.set_wallpaper(self.screen_id, self.wallpapers[prev_id])
+        self.set_wallpaper(self.current_screen(), self.wallpapers[prev_id])
         self.current_id = (self.current_id - 1) % self.total
-        self.screen_id = (self.screen_id - 1) % self.screen_count
-
+        # self.current_screen_id = (self.current_screen_id - 1) % self.screen_count
+        self.previous_screen()
 
 
 class WallpaperSetterUi:
@@ -244,6 +285,7 @@ class WallpaperSetterUi:
         self.stdscr.keypad(0)
         curses.echo()
         curses.nocbreak()
+        curses.nonl()
         curses.endwin()
 
     def curses_init(self):
