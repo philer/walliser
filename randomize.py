@@ -26,7 +26,7 @@ import random
 # import string
 # import json
 from datetime import timedelta
-
+from urllib.parse import quote as urlquote
 
 ###### Helpers ######
 
@@ -209,7 +209,7 @@ class Screen:
             + " ["
             + self.current_wallpaper.rating_as_string
             + "] file://"
-            + self.current_wallpaper.path
+            + urlquote(self.current_wallpaper.path)
         )
 
 
