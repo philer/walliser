@@ -503,8 +503,8 @@ class Ui:
 
         self.header = self.root_win.subwin(header_height, width, 0, 0)
         self.body = self.root_win.subwin(body_height, width, header_height, 0)
-        self.footer = self.root_win.subwin(
-            footer_height, width, header_height + body_height, 0)
+        # self.footer = self.root_win.subwin(header_height + body_height, 0)
+        self.footer = self.root_win.subwin(footer_height, width, height - 1, 0)
 
         self.screen_windows = []
         for s in range(0, self.screen_count):
