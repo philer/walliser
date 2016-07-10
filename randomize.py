@@ -76,10 +76,8 @@ def crop(lines, perline, string, ellipsis="…"):
         # return string[0 : length - len(ellipsis) ] + ellipsis
     # return string
 
-def rating_string(value, length=5, *,
-            positive="+", negative="-",
-            positive_bg=" ", negative_bg=" ", padding=" ",
-            big="∞"):
+def rating_string(value, length=5, *, positive="+", negative="-",
+                  positive_bg=" ", negative_bg=" ", padding=" ", big="∞"):
         """Get a rating as a visually pleasing, fixed length string.
 
         The following representations are tried in order to find one that
@@ -139,8 +137,11 @@ class modlist:
             key.stop if key.stop != None else self._len,
             key.step if key.step != None else 1
         )
-        return (self._list[i] for i in keys)
+        return (self[i] for i in keys)
 
+    def remove(self, item):
+        self._list.remove(item)
+        self._len -= 1
 
 class Interval(Thread):
     """Call a function every n seconds in a separate Thread
@@ -211,93 +212,31 @@ class Interval(Thread):
 
 ### Models ###
 
-class Screen:
-    """Model representing one (usually physical) monitor"""
+def observed(method):
+    """Decorator to be added on methods that should notify observers post op."""
+    def wrapper(self, *args, **kwargs):
+        method(self, *args, **kwargs)
+        self._notify_observers()
+    return wrapper
 
-    @property
-    def current_wallpaper(self):
-        return self.wallpapers[self._current_wallpaper_offset]
+class Observable:
+    def __init__(self):
+        self._observers = dict()
 
-    @property
-    def current(self):
-        return self._current
+    def subscribe(self, callback, *args):
+        """Add a subscriber to this object's observer list"""
+        self._observers[callback] = args
 
-    @current.setter
-    def current(self, current):
-        self._current = current
-        self.ui.update_screen(self)
+    def unsubscribe(self, callback):
+        """Remove a subscriber from this object's observer list"""
+        del self._observers[callback]
 
-    @property
-    def selected(self):
-        return self._selected
-
-    @selected.setter
-    def selected(self, selected):
-        self._selected = selected
-        self.ui.update_screen(self)
-
-    @property
-    def paused(self):
-        return self._paused
-
-    @paused.setter
-    def paused(self, paused):
-        self._paused = paused
-        self.ui.update_screen(self)
-
-    def __init__(self, ui, idx, wallpapers,
-            current=False, selected=False, paused=False):
-        self.ui = ui
-        self.idx = idx
-        self.wallpapers = wallpapers
-        self._current_wallpaper_offset = 0
-        self._current = current
-        self._selected = selected
-        self._paused = paused
-        ui.update_screen(self)
-
-    def __repr__(self):
-        return "screen:" + str(self.idx)
-
-    def cycle_wallpaper(self, offset):
-        self._current_wallpaper_offset += offset
-        self.ui.update_screen(self)
-
-    def next_wallpaper(self):
-        self.cycle_wallpaper(1)
-
-    def prev_wallpaper(self):
-        self.cycle_wallpaper(-1)
-
-    def ui_line(self):
-        """The shortest possible user friendly description of a wallpaper."""
-        return " ".join((
-            (
-                  ("»" if self.selected else " ")
-                + ("*" if self.current else "·" if self.paused else " ")
-                + str(self.idx + 1)
-            ),
-               "[" + self.current_wallpaper.rating_as_string(3)
-            + "][" + self.current_wallpaper.sketchy_as_string(3) + "]",
-            "file://" + urlquote(self.current_wallpaper.path),
-        ))
-
-    def ui_multiline(self):
-        """Double-line user friendly description of a wallpaper."""
-        return " ".join((
-            str(self.idx + 1),
-            "[" + self.current_wallpaper.rating_as_string() + "]",
-            "[" + self.current_wallpaper.sketchy_as_string() + "]",
-            "current" if self.current
-                else "paused " if self.paused else "       ",
-            "selected" if self.selected else "          ",
-        )) + "\nfile://" + urlquote(self.current_wallpaper.path)
-
-    def ui_string(self, compact=0):
-        return self.ui_line() if compact else self.ui_multiline()
+    def _notify_observers(self):
+        for observer, args in self._observers.items():
+            observer(*args)
 
 
-class Wallpaper:
+class Wallpaper(Observable):
     """Model representing one wallpaper"""
 
     @property
@@ -305,6 +244,7 @@ class Wallpaper:
         return self._rating
 
     @rating.setter
+    @observed
     def rating(self, rating):
         self._rating = rating
 
@@ -313,10 +253,12 @@ class Wallpaper:
         return self._sketchy
 
     @sketchy.setter
+    @observed
     def sketchy(self, sketchy):
         self._sketchy = sketchy
 
     def __init__(self, path, rating=0, sketchy=0):
+        Observable.__init__(self)
         self.path = path
         self.rating = rating
         self.sketchy = sketchy
@@ -345,6 +287,98 @@ class Wallpaper:
             "rating": self.rating,
             "sketchy": self.sketchy,
         }
+
+
+class Screen(Observable):
+    """Model representing one (usually physical) monitor"""
+
+    @property
+    def current_wallpaper(self):
+        return self.wallpapers[self._current_wallpaper_offset]
+
+    @property
+    def current(self):
+        return self._current
+
+    @current.setter
+    @observed
+    def current(self, current):
+        self._current = current
+
+    @property
+    def selected(self):
+        return self._selected
+
+    @selected.setter
+    @observed
+    def selected(self, selected):
+        self._selected = selected
+
+    @property
+    def paused(self):
+        return self._paused
+
+    @paused.setter
+    @observed
+    def paused(self, paused):
+        self._paused = paused
+
+    def __init__(self, ui, idx, wallpapers,
+            current=False, selected=False, paused=False):
+        self.ui = ui
+        self.idx = idx
+        self.wallpapers = wallpapers
+        self._current_wallpaper_offset = 0
+        self._current = current
+        self._selected = selected
+        self._paused = paused
+
+        Observable.__init__(self)
+        self.subscribe(ui.update_screen, self)
+        self.current_wallpaper.subscribe(ui.update_screen, self)
+        ui.update_screen(self)
+
+    def __repr__(self):
+        return "screen:" + str(self.idx)
+
+    @observed
+    def cycle_wallpaper(self, offset):
+        self.current_wallpaper.unsubscribe(self.ui.update_screen)
+        self._current_wallpaper_offset += offset
+        self.current_wallpaper.subscribe(self.ui.update_screen, self)
+
+    def next_wallpaper(self):
+        self.cycle_wallpaper(1)
+
+    def prev_wallpaper(self):
+        self.cycle_wallpaper(-1)
+
+    def ui_string(self, compact=0):
+        return self.ui_line() if compact else self.ui_multiline()
+
+    def ui_line(self):
+        """The shortest possible user friendly description of a wallpaper."""
+        return " ".join((
+            (
+                  ("»" if self.selected else " ")
+                + ("*" if self.current else "·" if self.paused else " ")
+                + str(self.idx + 1)
+            ),
+               "[" + self.current_wallpaper.rating_as_string(3)
+            + "][" + self.current_wallpaper.sketchy_as_string(3) + "]",
+            "file://" + urlquote(self.current_wallpaper.path),
+        ))
+
+    def ui_multiline(self):
+        """Double-line user friendly description of a wallpaper."""
+        return " ".join((
+            str(self.idx + 1),
+            "[" + self.current_wallpaper.rating_as_string() + "]",
+            "[" + self.current_wallpaper.sketchy_as_string() + "]",
+            "current" if self.current
+                else "paused " if self.paused else "       ",
+            "selected" if self.selected else "          ",
+        )) + "\nfile://" + urlquote(self.current_wallpaper.path)
 
 
 ### View ###
@@ -623,16 +657,18 @@ class ScreenController:
 
     @property
     def current_screen(self):
+        """Returns last (automatically) updated screen."""
         if self.active_screens:
             return self.active_screens[self._current_screen_offset]
 
     @property
     def selected_screen(self):
+        """Return selected screen. If none is selected select current_screen."""
         if self._selected_screen:
             return self._selected_screen
-        elif self.current_screen:
-            self.select(self.current_screen)
-            return self._selected_screen
+        # elif self.current_screen:
+        self.select(self.current_screen)
+        return self._selected_screen
 
     def __init__(self, args):
         self.update_delay = args.update_delay
@@ -663,18 +699,6 @@ class ScreenController:
 
             self.update_live_screens()
 
-            self.ui.on_keypress(curses.KEY_RIGHT, self.forward)
-            self.ui.on_keypress(curses.KEY_LEFT,  self.rewind)
-
-            self.ui.on_keypress(curses.KEY_DOWN,  self.next_on_selected)
-            self.ui.on_keypress(curses.KEY_UP,    self.prev_on_selected)
-
-            for s in range(1, self.screen_count + 1):
-                self.ui.on_keypress(str(s), self.select)
-            self.ui.on_keypress("0", self.deselect)
-
-            self.ui.on_keypress('p', self.toggle_selected)
-
             self.run()
 
         # pylint: disable=E1101
@@ -684,14 +708,31 @@ class ScreenController:
             raise self.update_interval.run_exception
 
     def run(self):
-        """Setup threads and event loops"""
+        """Setup listeners and threads and start loops."""
 
         # thread interruption event set by the first thread that gives up
         finished = Event()
         def interrupt(*_):
             finished.set()
 
+        for s in range(1, self.screen_count + 1):
+            self.ui.on_keypress(str(s), self.select)
+        self.ui.on_keypress('0', self.deselect)
+        self.ui.on_keypress('p', self.toggle_selected)
+        self.ui.on_keypress(ord('\t'), self.cycle_select)
+
+        self.ui.on_keypress(curses.KEY_RIGHT, self.forward)
+        self.ui.on_keypress(curses.KEY_LEFT,  self.rewind)
+        self.ui.on_keypress(curses.KEY_DOWN,  self.next_on_selected)
+        self.ui.on_keypress(curses.KEY_UP,    self.prev_on_selected)
+
+        self.ui.on_keypress('+', self.inc_rating_on_selected)
+        self.ui.on_keypress('-', self.dec_rating_on_selected)
+        self.ui.on_keypress('n', self.inc_sketchy_on_selected)
+        self.ui.on_keypress('s', self.dec_sketchy_on_selected)
+
         self.ui.on_keypress(curses.KEY_RESIZE, self.update_ui)
+
         self.ui.on_keypress('q', interrupt)
         self.ui.on_keypress('Q', interrupt)
         signal.signal(signal.SIGINT, interrupt)
@@ -768,8 +809,11 @@ class ScreenController:
             idx = int(scr) - 1
         else:
             raise TypeError()
-        if self._selected_screen:
+
+        try:
             self._selected_screen.selected = False
+        except AttributeError:
+            pass
         self._selected_screen = self.screens[idx]
         self._selected_screen.selected = True
 
@@ -777,32 +821,69 @@ class ScreenController:
         self._selected_screen.selected = False
         self._selected_screen = None
 
+    def cycle_select(self, _):
+        idx = self.selected_screen.idx
+        self.select(self.screens[(idx + 1) % self.screen_count])
+
     def toggle_selected(self, _):
         screen = self.selected_screen
         if screen:
-            if self.active_screens:
-                self.current_screen.current = False
             if screen.paused:
-                screen.paused = False
-                self.update_interval.start()
+                self.unpause_selected()
             else:
-                screen.paused = True
-            self.active_screens = modlist(
-                [s for s in self.screens if not s.paused])
-            if self.active_screens:
-                self.current_screen.current = True
-            else:
-                self.update_interval.stop()
+                self.pause_selected()
+
+    def pause_selected(self):
+        screen = self.selected_screen
+        if screen and not screen.paused:
+            screen.paused = True
+            self._update_active_screens()
+
+    def unpause_selected(self):
+        screen = self.selected_screen
+        if screen and screen.paused:
+            screen.paused = False
+            self._update_active_screens()
+
+    def _update_active_screens(self):
+        self.current_screen.current = False
+        active_screens = [s for s in self.screens if not s.paused]
+        if active_screens:
+            # We only overwrite self.active_screens if it's not empty
+            # so self.select_screen can still fall back on self.current_screen
+            self.active_screens = modlist(active_screens)
+            self.current_screen.current = True
+            self.update_interval.start()
+        else:
+            self.update_interval.stop()
 
     def next_on_selected(self, _):
-        if self.selected_screen:
-            self.selected_screen.next_wallpaper()
-            self.update_live_screens()
+        """Update selected (or current) screen to the next wallpaper."""
+        self.selected_screen.next_wallpaper()
+        self.update_live_screens()
 
     def prev_on_selected(self, _):
-        if self.selected_screen:
-            self.selected_screen.prev_wallpaper()
-            self.update_live_screens()
+        """Update selected (or current) screen to the previous wallpaper."""
+        self.selected_screen.prev_wallpaper()
+        self.update_live_screens()
+
+    def inc_rating_on_selected(self, _):
+        """Increment rating of current wallpaper on selected screen."""
+        self.selected_screen.current_wallpaper.rating += 1
+
+    def dec_rating_on_selected(self, _):
+        """Decrement rating of current wallpaper on selected screen."""
+        self.selected_screen.current_wallpaper.rating -= 1
+
+    def inc_sketchy_on_selected(self, _):
+        """Increment sketchy of current wallpaper on selected screen."""
+        self.selected_screen.current_wallpaper.sketchy += 1
+
+    def dec_sketchy_on_selected(self, _):
+        """Decrement sketchy of current wallpaper on selected screen."""
+        self.selected_screen.current_wallpaper.sketchy -= 1
+
+
 
 # run
 if __name__ == "__main__":
