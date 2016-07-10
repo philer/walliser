@@ -13,7 +13,7 @@ import os
 import sys
 import signal
 import subprocess
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from glob import iglob as glob
 # from pathlib import Path
 
@@ -22,9 +22,10 @@ from threading import Thread, Event
 # import asyncio
 import curses
 
-import random
+from operator import attrgetter
 # import string
-# import json
+import random
+import json
 from datetime import timedelta
 from urllib.parse import quote as urlquote
 
@@ -225,6 +226,12 @@ class Wallpaper:
     def __repr__(self):
         return self.path
 
+    def __eq__(self, other):
+        return self.path == other.path
+
+    def __hash__(self, other):
+        return hash(Wallpaper) ^ hash(self.path)
+
     @property
     def rating(self):
         return self._rating
@@ -276,6 +283,13 @@ class Wallpaper:
             # next(filter(lambda s: len(s) <= length, options())),
             next(s for s in options() if len(s) <= length),
             padding)
+
+    def to_dict(self):
+        return {
+            "path":   self.path,
+            "rating": self.rating,
+            "sketchy": self.sketchy,
+        }
 
 class Ui:
     """Curses-based text interface for WallpaperSetter"""
@@ -453,22 +467,70 @@ class WallpaperController:
     KNOWN_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif"]
 
     def __init__(self, args):
+        self.args = args
 
-        # todo config file storage
-        wallpaper_paths = self._find_wallpapers(args.wallpaper_sources)
-        if not wallpaper_paths:
-            raise Exception("No wallpapers found in '{}'"
-                .format("'\n'".join(args.wallpaper_sources)))
+        config = Namespace(wallpapers=[])
+        try:
+            with open(args.config_file, "r") as config_file:
+                config = Namespace(**json.load(config_file))
+        except (TypeError, FileNotFoundError):
+            pass
+        except ValueError:
+            # only raise if the file was not empty (really "malformed")
+            if os.stat(args.config_file).st_size:
+                raise
 
-        self.wallpaper_count = len(wallpaper_paths)
-        self.wallpapers = list(map(Wallpaper, wallpaper_paths))
+        if args.wallpaper_sources:
+            wallpaper_paths = set(self._find_wallpapers(args.wallpaper_sources))
+        else:
+            wallpaper_paths = set()
 
-        # maybe make this optional?
-        random.shuffle(self.wallpapers)
+        self.wallpapers = []
+
+        # We discard wallpaper paths that our config already knows about...
+        for wp_data in config.wallpapers:
+            wp = Wallpaper(**wp_data)
+            self.wallpapers.append(wp)
+            wallpaper_paths.discard(wp.path)
+
+        # ... and add the remaining ones as fresh instances.
+        self.wallpapers += list(map(Wallpaper, wallpaper_paths))
+
+        if not self.wallpapers:
+            raise Exception("No wallpapers found.")
+        self.wallpaper_count = len(self.wallpapers)
+
+        if args.shuffle:
+            self.store_config(needs_sorting=True)
+            random.shuffle(self.wallpapers)
+        else:
+            self.wallpapers.sort(key=attrgetter("path"))
+            self.store_config(needs_sorting=False)
+
+    def store_config(self, needs_sorting=True, pretty=False):
+        """Save current configuration into given file."""
+        try:
+            with open(self.args.config_file, "w") as config_file:
+                if needs_sorting:
+                    wallpapers = sorted(self.wallpapers, key=attrgetter("path"))
+                else:
+                    wallpapers = self.wallpapers
+
+                data = {
+                    "wallpapers": [wp.to_dict() for wp in wallpapers]
+                }
+                if pretty:
+                    json.dump(data, config_file, indent="\t")
+                else:
+                    json.dump(data, config_file, separators=(",", ":"))
+        except TypeError:
+            pass
 
 
     def _find_wallpapers(self, patterns):
-        """Return iterable of wallpaper paths matching the given pattern(s)."""
+        """Returns an iterable of wallpaper paths matching the given pattern(s).
+        Doesn't clear duplicates (use a set).
+        """
         wallpapers = []
         for pattern in patterns:
             pattern = os.path.expanduser(pattern)
@@ -477,7 +539,7 @@ class WallpaperController:
                     wallpapers.append(os.path.realpath(path))
                 else:
                     wallpapers += self._wallpapers_in_dir(path)
-        return list(filter(self._is_image_file, set(wallpapers)))
+        return filter(self._is_image_file, wallpapers)
 
     def _is_image_file(self, path):
         """Rudimentary check for know filename extensions, no magic."""
@@ -686,19 +748,39 @@ class ScreenController:
 if __name__ == "__main__":
     parser = ArgumentParser("wallrand",
         description="Update desktop background periodically",
-        epilog="Thank you and good bye."
+        epilog="Thank you and good bye.",
+    )
+    parser.add_argument("-c", "--config-file",
+        help="Read and store wallpaper data in this file. JSON formatted.",
+        dest="config_file",
+        type=str,
+        default=None,
+    )
+    parser.add_argument("wallpaper_sources",
+        help="Any number of files or directories where wallpapers can be found. Supports globbing",
+        metavar="FILE/DIR",
+        nargs="*",
+        # default=".",
     )
     parser.add_argument("-i", "--interval",
         help="Seconds between updates (may be float)",
         metavar="N",
         dest="update_delay",
         type=float,
-        default=2.0
+        default=2.0,
     )
-    parser.add_argument("wallpaper_sources",
-        help="Any number of files or directories where wallpapers can be found. Supports globbing",
-        metavar="FILE/DIR",
-        nargs="*",
-        default="."
+    sorting_group = parser.add_mutually_exclusive_group()
+    sorting_group.add_argument("-s", "--shuffle",
+        help="Cycle through wallpapers in random order.",
+        dest="shuffle",
+        action='store_true',
+        default=True,
     )
+    sorting_group.add_argument("-S", "--sort",
+        help="Cycle through wallpapers in alphabetical order (fully resolved path).",
+        dest="shuffle",
+        action='store_false',
+    )
+    # from pprint import pprint
+    # pprint(parser.parse_args())
     ScreenController(parser.parse_args())
