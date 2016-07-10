@@ -8,6 +8,7 @@
 # pylint: disable=W0141
 # pylint: disable=W0201
 # pylint: disable=W0703
+#
 
 import os
 import sys
@@ -16,6 +17,7 @@ import subprocess
 from argparse import ArgumentParser, Namespace
 from glob import iglob as glob
 # from pathlib import Path
+import json
 
 from threading import Thread, Event
 # import time
@@ -25,36 +27,98 @@ import curses
 from operator import attrgetter
 # import string
 import random
-import json
 from datetime import timedelta
 from urllib.parse import quote as urlquote
 
-###### Helpers ######
+
+### functional programming helpers ###
 
 def noop(*_):
-    """Do nothing with any number of arguments"""
+    """Do nothing with any number of arguments."""
     pass
+
+def repeat(item, count=sys.maxsize):
+    for _ in range(count):
+        yield item
+
+def exhaust(iterator):
+    """Do nothing with every element of an iterator."""
+    for _ in iterator:
+        pass
+
+def each(function, *iterators):
+    """Like map() but runs immediately and returns nothing."""
+    exhaust(map(function, *iterators))
 
 def sign(x):
     """Return a numbers signum as -1, 1 or 0"""
     return 1 if x > 0 else -1 if x < 0 else 0
-    # return x/abs(x) if x > 0 else 0
 
-def pad(length, string, character=" "):
+
+### string formatting helpers ###
+
+def right_pad(length, string, character=" "):
     """Extends string to given length by adding padding characters if necessary.
     If string is longer than length it will be shortened to length.
     """
     return string[0:length] + character * (length - len(string))
 
-def crop(length, string, ellipsis="…"):
-    """Shortens string to given maximum length and adds ellipsis if it does."""
-    if len(string) > length:
-        return string[0 : length - len(ellipsis) ] + ellipsis
-    return string
 
-def repeat(item, count=sys.maxsize):
-    for _ in range(count):
-        yield item
+def crop(lines, perline, string, ellipsis="…"):
+    """Shortens string to given maximum length and adds ellipsis if it does."""
+    # Expressions in Python are fun O.O
+    return "\n".join(
+        line[ 0 : perline - len(ellipsis) ] + ellipsis
+        if len(line) > perline else line
+        for line in string.split("\n")[0:lines]
+    )
+    # if len(string) > length:
+        # return string[0 : length - len(ellipsis) ] + ellipsis
+    # return string
+
+def rating_string(value, length=5, *,
+            positive="+", negative="-",
+            positive_bg=" ", negative_bg=" ", padding=" ",
+            big="∞"):
+        """Get a rating as a visually pleasing, fixed length string.
+
+        The following representations are tried in order to find one that
+        is short enough for the 'length' parameter:
+        (examples assuming default formatting strings)
+        > "+++  " or "--   "
+        #> "+ 30 " or "- 999" (disabled)
+        > "+3000" or "-9999"
+        #> "+ ∞  " or "- ∞"   (disabled)
+        > "+∞"    or "-∞"     (for length = 2 and value > 1)
+        > "+"     or "-"      (for length = 1 and value != 0)
+        > ""                  (for length = 0)
+        For a zero value only positive background is returned.
+
+        Here are some cool characters:
+        [★☆🚫☺♥♡~✦✱*♀♂♻♲]
+        """
+         # This was way too much fun. x)
+        (symbol, background) = [
+                (positive, positive_bg), (negative, negative_bg)
+            ][value < 0]
+
+        # omg a generator!!1
+        def options():
+            absval = abs(value)
+            yield (absval * symbol, background)
+            absval = str(absval)
+            # yield symbol + padding + absval, padding
+            yield (symbol + absval, padding)
+            # yield symbol + padding + big, padding
+            yield (symbol + big, padding)
+            yield (symbol, padding)
+            yield ("","")
+
+        (string, padchar) = next((s,p) for s,p in options() if len(s) <= length)
+        return right_pad(length, string, padchar)
+
+
+### structural helpers ###
 
 class modlist:
     def __init__(self, base_list, step=1, offset=0):
@@ -145,6 +209,8 @@ class Interval(Thread):
             self.terminate()
 
 
+### Models ###
+
 class Screen:
     """Model representing one (usually physical) monitor"""
 
@@ -203,34 +269,36 @@ class Screen:
     def prev_wallpaper(self):
         self.cycle_wallpaper(-1)
 
-    def ui_string(self):
-        return (
-              ("»" if self.selected else " ")
-            + ("*" if self.current else "·" if self.paused else " ")
-            + str(self.idx + 1)
-            + " ["
-            + self.current_wallpaper.rating_as_string
-            + "] file://"
-            + urlquote(self.current_wallpaper.path)
-        )
+    def ui_line(self):
+        """The shortest possible user friendly description of a wallpaper."""
+        return " ".join((
+            (
+                  ("»" if self.selected else " ")
+                + ("*" if self.current else "·" if self.paused else " ")
+                + str(self.idx + 1)
+            ),
+               "[" + self.current_wallpaper.rating_as_string(3)
+            + "][" + self.current_wallpaper.sketchy_as_string(3) + "]",
+            "file://" + urlquote(self.current_wallpaper.path),
+        ))
+
+    def ui_multiline(self):
+        """Double-line user friendly description of a wallpaper."""
+        return " ".join((
+            str(self.idx + 1),
+            "[" + self.current_wallpaper.rating_as_string() + "]",
+            "[" + self.current_wallpaper.sketchy_as_string() + "]",
+            "current" if self.current
+                else "paused " if self.paused else "       ",
+            "selected" if self.selected else "          ",
+        )) + "\nfile://" + urlquote(self.current_wallpaper.path)
+
+    def ui_string(self, compact=0):
+        return self.ui_line() if compact else self.ui_multiline()
 
 
 class Wallpaper:
     """Model representing one wallpaper"""
-
-    def __init__(self, path, rating=0, sketchy=0):
-        self.path = path
-        self.rating = random.randint(-3,7) #TODO
-        self.sketchy = sketchy
-
-    def __repr__(self):
-        return self.path
-
-    def __eq__(self, other):
-        return self.path == other.path
-
-    def __hash__(self, other):
-        return hash(Wallpaper) ^ hash(self.path)
 
     @property
     def rating(self):
@@ -248,41 +316,28 @@ class Wallpaper:
     def sketchy(self, sketchy):
         self._sketchy = sketchy
 
-    @property
-    def rating_as_string(self,
-            length=5, positive="+", negative="-", padding=" ", big="∞"):
-        """Get the rating as a visually pleasing, fixed length string.
+    def __init__(self, path, rating=0, sketchy=0):
+        self.path = path
+        self.rating = rating
+        self.sketchy = sketchy
 
-        The following representations are tried in order to find one that
-        is short enough for the 'length' parameter:
-        (examples assuming default formatting strings)
-        * "★★★  " or "--   "
-        * "★ 30 " or "- 999"
-        * "★3000" or "-9999"
-        * "★ ∞" or "- ∞"
-        * "★∞" or "-∞" (for length = 2 and rating > 1)
-        * "★" or "-" (for length = 1 and rating != 0)
-        * "" (for length = 0)
-        For a zero rating only padding is returned.
-        """
-        symbol = [negative, padding, positive][sign(self.rating) + 1] # yeah...
+    def __repr__(self):
+        return self.path
 
-        def options():
-            rating = abs(self.rating)
-            yield rating * symbol
-            rating = str(rating)
-            # yield symbol + padding + rating
-            yield symbol + rating
-            # yield symbol + padding + big
-            yield symbol + big
-            yield symbol
-            yield ""
+    def __eq__(self, other):
+        return self.path == other.path
 
-        return pad(
-            length,
-            # next(filter(lambda s: len(s) <= length, options())),
-            next(s for s in options() if len(s) <= length),
-            padding)
+    def __hash__(self, other):
+        return hash(Wallpaper) ^ hash(self.path)
+
+    def sketchy_as_string(self, length=5):
+        return rating_string(self.sketchy, length,
+            positive="♥", positive_bg="♡", negative="~")
+
+    def rating_as_string(self, length=5):
+        return rating_string(self.rating, length,
+        #    positive="✱")
+            positive="★", positive_bg="☆")
 
     def to_dict(self):
         return {
@@ -290,6 +345,9 @@ class Wallpaper:
             "rating": self.rating,
             "sketchy": self.sketchy,
         }
+
+
+### View ###
 
 class Ui:
     """Curses-based text interface for WallpaperSetter"""
@@ -353,6 +411,7 @@ class Ui:
         curses.nocbreak()
         curses.endwin()
 
+
     def run_event_loop(self, finished):
         try:
             while not finished.is_set():
@@ -365,7 +424,9 @@ class Ui:
 
                 if char == curses.KEY_RESIZE:
                     self.layout()
-                    self.refresh()
+                    self.refresh_header()
+                    self.refresh_footer()
+                    # Not responsible for body content here, done via listener
 
                 try:
                     for listener in self.key_listeners[char]:
@@ -388,10 +449,12 @@ class Ui:
         else:
             self.key_listeners[key] = [callback]
 
+
     def layout(self):
         """Hardcoded ui layout.
         Call whenever window sizes need recalculating.
         """
+        self.root_win.erase()
 
         (height, width) = self.root_win.getmaxyx()
         self.width = width # used by updates
@@ -415,7 +478,6 @@ class Ui:
                 screen_window_height, width, s * screen_window_height, 0))
 
 
-
     def update_header(self, screen_count, wallpaper_count, update_delay):
         playtime = timedelta(seconds=int(
             wallpaper_count * update_delay / screen_count))
@@ -426,23 +488,12 @@ class Ui:
         self.refresh_header()
 
     def update_screen(self, screen):
-        self.screen_strings[screen.idx] = screen.ui_string()
+        self.screen_strings[screen.idx] = screen.ui_string(
+            self.screen_window_height == 1)
         self.refresh_screen(screen.idx)
-
-        self.ping += 1
-        if self.ping > 2:
-            self.refresh()
 
     def update_footer(self, string):
         self.footer_string = string
-        self.refresh_footer()
-
-    def refresh(self):
-        self.root_win.erase()
-        self.refresh_header()
-        # self.body.erase()
-        for idx in range(len(self.screen_windows)):
-            self.refresh_screen(idx)
         self.refresh_footer()
 
     def refresh_header(self):
@@ -457,10 +508,13 @@ class Ui:
         self._set_window_content(self.footer, self.footer_string)
 
     def _set_window_content(self, win, string):
+        (height, width) = win.getmaxyx()
         win.erase()
-        win.addstr(crop(self.width - 1, string))
+        win.addstr(crop(height, width - 1, string))
         win.refresh()
 
+
+### Controllers ###
 
 class WallpaperController:
 
@@ -637,6 +691,7 @@ class ScreenController:
         def interrupt(*_):
             finished.set()
 
+        self.ui.on_keypress(curses.KEY_RESIZE, self.update_ui)
         self.ui.on_keypress('q', interrupt)
         self.ui.on_keypress('Q', interrupt)
         signal.signal(signal.SIGINT, interrupt)
@@ -668,7 +723,12 @@ class ScreenController:
             .count(" connected ")
         )
 
+    def update_ui(self, *_):
+        """Update the moving parts of the UI that we can influence."""
+        each(self.ui.update_screen, self.screens)
+
     def update_live_screens(self):
+        """Get each screen's current wallpaper and put them on the monitors."""
         self.wallpaper_controller.update_live_wallpapers(
             scr.current_wallpaper for scr in self.screens
         )
