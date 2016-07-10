@@ -178,7 +178,8 @@ class Screen:
         self._paused = paused
         self.ui.update_screen(self)
 
-    def __init__(self, ui, idx, wallpapers, current=False, selected=False, paused=False):
+    def __init__(self, ui, idx, wallpapers,
+            current=False, selected=False, paused=False):
         self.ui = ui
         self.idx = idx
         self.wallpapers = wallpapers
@@ -278,6 +279,8 @@ class Wallpaper:
 
 class Ui:
     """Curses-based text interface for WallpaperSetter"""
+
+    SCREEN_WINDOW_MAX_HEIGHT = 2
 
     def __init__(self, screen_count, wallpaper_count, update_delay):
         self.init_curses()
@@ -381,18 +384,23 @@ class Ui:
 
         header_height = 1
         footer_height = 1
-        body_height = height - header_height - footer_height
+        max_body_height = height - header_height - footer_height
+        screen_window_height = min(max_body_height // self.screen_count,
+            Ui.SCREEN_WINDOW_MAX_HEIGHT)
+        self.screen_window_height = screen_window_height # used by updates
+        body_height = screen_window_height * self.screen_count
 
         self.header = self.root_win.subwin(header_height, width, 0, 0)
         self.body = self.root_win.subwin(body_height, width, header_height, 0)
-        self.footer = self.root_win.subwin(height - footer_height, 0)
+        self.footer = self.root_win.subwin(
+            footer_height, width, header_height + body_height, 0)
 
-        sw_height = body_height // self.screen_count
-        self.screen_window_height = sw_height # used by updates
         self.screen_windows = []
         for s in range(0, self.screen_count):
             self.screen_windows.append(self.body.derwin(
-                sw_height, width, s * sw_height, 0))
+                screen_window_height, width, s * screen_window_height, 0))
+
+
 
     def update_header(self, screen_count, wallpaper_count, update_delay):
         playtime = timedelta(seconds=int(
@@ -416,9 +424,9 @@ class Ui:
         self.refresh_footer()
 
     def refresh(self):
-        # self.root_win.erase()
+        self.root_win.erase()
         self.refresh_header()
-        self.body.erase()
+        # self.body.erase()
         for idx in range(len(self.screen_windows)):
             self.refresh_screen(idx)
         self.refresh_footer()
