@@ -135,12 +135,12 @@ def right_pad(length, string, character=" "):
     return string[0:length] + character * (length - len(string))
 
 
-def crop(lines, perline, string, ellipsis="…"):
+def crop(lines, columns, string, ellipsis="…"):
     """Shortens string to given maximum length and adds ellipsis if it does."""
     # Expressions in Python are fun O.O
     return "\n".join(
-        line[ 0 : perline - len(ellipsis) ] + ellipsis
-        if len(line) > perline else line
+        line[ 0 : columns - len(ellipsis) ] + ellipsis
+        if len(line) > columns else line
         for line in string.split("\n")[0:lines]
     )
     # if len(string) > length:
@@ -320,19 +320,19 @@ class Wallpaper(Observable):
         self._rating = rating
 
     @property
-    def sketchy(self):
-        return self._sketchy
+    def purity(self):
+        return self._purity
 
-    @sketchy.setter
+    @purity.setter
     @observed
-    def sketchy(self, sketchy):
-        self._sketchy = sketchy
+    def purity(self, purity):
+        self._purity = purity
 
-    def __init__(self, path, rating=0, sketchy=0):
+    def __init__(self, path, rating=0, purity=0):
         Observable.__init__(self)
         self.path = path
         self.rating = rating
-        self.sketchy = sketchy
+        self.purity = purity
 
     def __repr__(self):
         return self.path
@@ -343,20 +343,21 @@ class Wallpaper(Observable):
     def __hash__(self, other):
         return hash(Wallpaper) ^ hash(self.path)
 
-    def sketchy_as_string(self, length=5):
-        return rating_string(self.sketchy, length,
-            positive="♥", positive_bg="♡", negative="~")
+    def purity_as_string(self, length=5):
+        return rating_string(self.purity, length,
+            negative="♥", negative_bg="♡", positive="~", positive_bg="♡")
+            # positive="♥", positive_bg="♡", negative="~")
 
     def rating_as_string(self, length=5):
         return rating_string(self.rating, length,
-        #    positive="✱")
             positive="★", positive_bg="☆")
+            # positive="✱")
 
     def to_dict(self):
         return {
             "path": self.path,
             "rating": self.rating,
-            "sketchy": self.sketchy,
+            "purity": self.purity,
         }
 
 
@@ -436,7 +437,7 @@ class Screen(Observable):
                 + str(self.idx + 1)
             ),
                "[" + self.current_wallpaper.rating_as_string(3)
-            + "][" + self.current_wallpaper.sketchy_as_string(3) + "]",
+            + "][" + self.current_wallpaper.purity_as_string(3) + "]",
             "file://" + urlquote(self.current_wallpaper.path),
         ))
 
@@ -445,7 +446,7 @@ class Screen(Observable):
         return " ".join((
             str(self.idx + 1),
             "[" + self.current_wallpaper.rating_as_string() + "]",
-            "[" + self.current_wallpaper.sketchy_as_string() + "]",
+            "[" + self.current_wallpaper.purity_as_string() + "]",
             "current" if self.current
                 else "paused " if self.paused else "       ",
             "selected" if self.selected else "          ",
@@ -487,6 +488,9 @@ class Ui:
 
     def init_curses(self):
         """Set up curses interface. (compare curses.wrapper)"""
+
+        os.environ.setdefault('ESCDELAY', '25')
+
         self.root_win = curses.initscr()
 
         # Turn off echoing of keys, and enter cbreak mode,
@@ -571,7 +575,7 @@ class Ui:
         (height, width) = self.root_win.getmaxyx()
         self.width = width # used by updates
 
-        header_height = 1
+        header_height = 2
         footer_height = 1
         body_height = height - header_height - footer_height
 
@@ -627,6 +631,13 @@ class Ui:
     def update_screen(self, screen):
         self.screen_strings[screen.idx] = screen.ui_string(
             self.screen_window_height == 1)
+
+        win = self.screen_windows[screen.idx]
+        if screen.selected:
+            win.bkgd(' ', curses.A_REVERSE)
+        else:
+            win.bkgd(' ', curses.A_NORMAL)
+
         self.refresh_screen(screen.idx)
 
     def update_footer(self, string):
@@ -848,11 +859,17 @@ class ScreenController:
         # We rely on the @property setter
         self.selected_screen = self.screens[idx]
 
-    def cycle_select(self, _):
+    def select_next(self, _):
         """Advance the selected screen to the next of all screens."""
         # We rely on the @property getter/setter
         idx = self.selected_screen.idx
         self.selected_screen = self.screens[(idx + 1) % self.screen_count]
+
+    def select_prev(self, _):
+        """Advance the selected screen to the next of all screens."""
+        # We rely on the @property getter/setter
+        idx = self.selected_screen.idx
+        self.selected_screen = self.screens[(idx - 1) % self.screen_count]
 
     def pause_selected(self):
         self.selected_screen.paused = True
@@ -896,13 +913,13 @@ class ScreenController:
         """Decrement rating of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.rating -= 1
 
-    def inc_sketchy_on_selected(self, _):
-        """Increment sketchy of current wallpaper on selected screen."""
-        self.selected_screen.current_wallpaper.sketchy += 1
+    def inc_purity_on_selected(self, _):
+        """Increment purity of current wallpaper on selected screen."""
+        self.selected_screen.current_wallpaper.purity += 1
 
-    def dec_sketchy_on_selected(self, _):
-        """Decrement sketchy of current wallpaper on selected screen."""
-        self.selected_screen.current_wallpaper.sketchy -= 1
+    def dec_purity_on_selected(self, _):
+        """Decrement purity of current wallpaper on selected screen."""
+        self.selected_screen.current_wallpaper.purity -= 1
 
 
 class Core:
@@ -955,25 +972,32 @@ class Core:
 
         scrctrl = self.screen_controller
         keypress = self.ui.on_keypress
-        # # for s in range(self.screen_count):
-        # #     keypress(str(s + 1), self.select)
-        keypress('p', scrctrl.toggle_selected)
-        keypress(ord('\t'), scrctrl.cycle_select)
 
-        keypress(curses.KEY_RIGHT, with_interval_reset(scrctrl.next))
-        keypress(curses.KEY_LEFT,  with_interval_reset(scrctrl.prev))
-        keypress(curses.KEY_DOWN,  scrctrl.next_on_selected)
-        keypress(curses.KEY_UP,    scrctrl.prev_on_selected)
+        keypress('n', with_interval_reset(scrctrl.next))
+        keypress('b', with_interval_reset(scrctrl.prev))
 
-        keypress('+', scrctrl.inc_rating_on_selected)
-        keypress('-', scrctrl.dec_rating_on_selected)
-        keypress('n', scrctrl.inc_sketchy_on_selected)
-        keypress('s', scrctrl.dec_sketchy_on_selected)
+        keypress(ord('\t'),         scrctrl.select_next)
+        keypress(curses.KEY_DOWN,   scrctrl.select_next)
+        keypress(curses.KEY_UP,     scrctrl.select_prev)
+        keypress(' ',               scrctrl.toggle_selected)
+
+        keypress('a', with_interval_reset(scrctrl.next_on_selected))
+        keypress('q', with_interval_reset(scrctrl.prev_on_selected))
+        keypress(curses.KEY_RIGHT,
+            with_interval_reset(scrctrl.next_on_selected))
+        keypress(curses.KEY_LEFT,
+            with_interval_reset(scrctrl.prev_on_selected))
+
+        keypress('w', scrctrl.inc_rating_on_selected)
+        keypress('s', scrctrl.dec_rating_on_selected)
+        keypress('e', scrctrl.inc_purity_on_selected)
+        keypress('d', scrctrl.dec_purity_on_selected)
 
         keypress(curses.KEY_RESIZE, scrctrl.update_ui)
 
-        keypress('q',                self.interrupt)
-        keypress('Q',                self.interrupt)
+        # keypress('q',                self.interrupt)
+        # keypress('Q',                self.interrupt)
+        keypress(27,                self.interrupt) # ESC
         signal.signal(signal.SIGINT, self.interrupt)
 
         self.screen_controller.update_live_screens()
