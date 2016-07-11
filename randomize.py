@@ -31,6 +31,11 @@ from datetime import timedelta
 from urllib.parse import quote as urlquote
 
 
+def set_wallpapers(*wallpaper_paths):
+    """Low level wallpaper setter using feh"""
+    subprocess.call(
+        ["feh", "--bg-fill", "--no-fehbg"] + list(wallpaper_paths))
+
 ### CLI ###
 
 def parse_args():
@@ -743,12 +748,7 @@ class WallpaperController:
 
     def update_live_wallpapers(self, wallpapers):
         """Set actually visible wallpapers."""
-        self.feh([wp.path for wp in wallpapers])
-
-    def feh(self, wallpaper_paths):
-        """Low level wallpaper setter using feh"""
-        subprocess.call(["feh", "--bg-fill", "--no-fehbg"] + wallpaper_paths)
-
+        set_wallpapers(*(wp.path for wp in wallpapers))
 
 
 class ScreenController:
@@ -772,96 +772,30 @@ class ScreenController:
         self._selected_screen = selected_screen
         self._selected_screen.selected = True
 
-    def __init__(self, args):
-        self.interval_delay = args.interval_delay
+    def __init__(self, ui, wallpaper_controller):
+        self.ui = ui
+        self.wallpaper_controller = wallpaper_controller
 
         screen_count = self._get_screen_count()
         if not screen_count:
             raise Exception("No screens found.")
         self.screen_count = screen_count
+        self.ui.update_screen_count(screen_count)
+        self.screens = []
+        for idx in range(screen_count):
+            wallpapers = modlist(
+                self.wallpaper_controller.wallpapers,
+                screen_count,
+                idx)
+            self.screens.append(Screen(self.ui, idx, wallpapers))
 
-        with Ui() as self.ui:
-            self.wallpaper_controller = WallpaperController(self.ui, args)
-            self.ui.update_screen_count(screen_count)
-            self.ui.update_interval_delay(args.interval_delay)
-            self.screens = []
-            for idx in range(screen_count):
-                wallpapers = modlist(
-                    self.wallpaper_controller.wallpapers,
-                    screen_count,
-                    idx)
-                self.screens.append(Screen(self.ui, idx, wallpapers))
-
-            self.active_screens = modlist(self.screens[:])
-            self._current_screen_offset = 0
-            self.current_screen.current = True
-            self._selected_screen = self.screens[0]
-            self._selected_screen.selected = True
-
-            self.update_live_screens()
-
-            self.run()
-
-        # pylint: disable=E1101
-        if hasattr(self.ui, 'run_event_loop_exception'):
-            raise self.ui.run_event_loop_exception
-        if hasattr(self.update_interval, 'run_exception'):
-            raise self.update_interval.run_exception
-
-    def run(self):
-        """Setup listeners and threads and start loops."""
-
-        # thread interruption event set by the first thread that gives up
-        finished = Event()
-        def interrupt(*_):
-            finished.set()
-
-        # TODO:
-        # next/prev (global): n/b
-        # next/prev (current): right/left
-        # (un)pause (global): p
-        # (un)pause (current): space
-        # rating/purity: ws/ed | ws/ad
-        # quit: q/esc
-        # self.ui.on_keypress('h', , help)
-
-        # # for s in range(self.screen_count):
-        # #     self.ui.on_keypress(str(s + 1), self.select)
-        self.ui.on_keypress('p', self.toggle_selected)
-        self.ui.on_keypress(ord('\t'), self.cycle_select)
-
-        self.ui.on_keypress(curses.KEY_RIGHT, self.forward)
-        self.ui.on_keypress(curses.KEY_LEFT,  self.rewind)
-        self.ui.on_keypress(curses.KEY_DOWN,  self.next_on_selected)
-        self.ui.on_keypress(curses.KEY_UP,    self.prev_on_selected)
-
-        self.ui.on_keypress('+', self.inc_rating_on_selected)
-        self.ui.on_keypress('-', self.dec_rating_on_selected)
-        self.ui.on_keypress('n', self.inc_sketchy_on_selected)
-        self.ui.on_keypress('s', self.dec_sketchy_on_selected)
-
-        self.ui.on_keypress(curses.KEY_RESIZE, self.update_ui)
-
-        self.ui.on_keypress('q',     interrupt)
-        self.ui.on_keypress('Q',     interrupt)
-        signal.signal(signal.SIGINT, interrupt)
-
-        self.ui_thread = Thread(
-            target=self.ui.run_event_loop,
-            args=[finished]
-        )
-        self.ui_thread.start()
-
-        self.update_interval = Interval(
-            self.interval_delay,
-            self.next,
-            finished
-        )
-        self.update_interval.start()
-
-        finished.wait()
-        self.update_interval.terminate()
-
+        self.active_screens = modlist(self.screens[:])
+        self._current_screen_offset = 0
+        self.current_screen.current = True
+        self._selected_screen = self.screens[0]
+        self._selected_screen.selected = True
+        # self.update_live_screens()
+        # self.run()
 
     def _get_screen_count(self):
         """Finds out the number of connected screens."""
@@ -901,14 +835,6 @@ class ScreenController:
             self.current_screen.current = True
             self.update_live_screens()
 
-    def forward(self, _):
-        self.next()
-        self.update_interval.reset()
-
-    def rewind(self, _):
-        self.prev()
-        self.update_interval.reset()
-
     def select(self, scr):
         """Flexible input setter for selected_screen"""
         if isinstance(scr, Screen):
@@ -947,10 +873,10 @@ class ScreenController:
         if active_screens:
             self.active_screens = modlist(active_screens)
             self.current_screen.current = True
-            self.update_interval.start() # TODO remove
+            # self.update_interval.start() # TODO remove
         else:
             self.active_screens = []
-            self.update_interval.stop() # TODO remove
+            # self.update_interval.stop() # TODO remove
 
     def next_on_selected(self, _):
         """Update selected (or current) screen to the next wallpaper."""
@@ -982,7 +908,86 @@ class ScreenController:
 class Core:
     def __init__(self, args):
         # self.args = args
-        self.screen_controller = ScreenController(args)
+        self.interrupted = Event()
+
+        self.interval_delay = args.interval_delay
+
+        with Ui() as self.ui:
+            self.ui.update_interval_delay(args.interval_delay)
+
+            self.wallpaper_controller = WallpaperController(self.ui, args)
+            self.screen_controller = ScreenController(self.ui,
+                self.wallpaper_controller)
+
+            self.run()
+
+    def interrupt(self, *_):
+        """Trigger thread interruption event to halt everything."""
+        self.interrupted.set()
+
+    def run(self):
+        """Setup listeners and threads and start loops."""
+
+        ui_thread = Thread(
+            target=self.ui.run_event_loop,
+            args=[self.interrupted]
+        )
+        update_interval = Interval(
+            self.interval_delay,
+            self.screen_controller.next,
+            self.interrupted
+        )
+
+        def with_interval_reset(fn):
+            def wrapped(*args):
+                fn(*args)
+                update_interval.reset()
+            return wrapped
+
+        # TODO:
+        # next/prev (global): n/b
+        # next/prev (current): right/left
+        # (un)pause (global): p
+        # (un)pause (current): space
+        # rating/purity: ws/ed | ws/ad
+        # quit: q/esc
+        # self.ui.on_keypress('h', , help)
+
+        scrctrl = self.screen_controller
+        keypress = self.ui.on_keypress
+        # # for s in range(self.screen_count):
+        # #     keypress(str(s + 1), self.select)
+        keypress('p', scrctrl.toggle_selected)
+        keypress(ord('\t'), scrctrl.cycle_select)
+
+        keypress(curses.KEY_RIGHT, with_interval_reset(scrctrl.next))
+        keypress(curses.KEY_LEFT,  with_interval_reset(scrctrl.prev))
+        keypress(curses.KEY_DOWN,  scrctrl.next_on_selected)
+        keypress(curses.KEY_UP,    scrctrl.prev_on_selected)
+
+        keypress('+', scrctrl.inc_rating_on_selected)
+        keypress('-', scrctrl.dec_rating_on_selected)
+        keypress('n', scrctrl.inc_sketchy_on_selected)
+        keypress('s', scrctrl.dec_sketchy_on_selected)
+
+        keypress(curses.KEY_RESIZE, scrctrl.update_ui)
+
+        keypress('q',                self.interrupt)
+        keypress('Q',                self.interrupt)
+        signal.signal(signal.SIGINT, self.interrupt)
+
+        self.screen_controller.update_live_screens()
+
+        ui_thread.start()
+        update_interval.start()
+        self.interrupted.wait()
+        update_interval.terminate()
+
+        # pylint: disable=E1101
+        if hasattr(update_interval, 'run_exception'):
+            raise update_interval.run_exception
+        if hasattr(self.ui, 'run_event_loop_exception'):
+            raise self.ui.run_event_loop_exception
 
 
 # run
