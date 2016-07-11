@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument("-i", "--interval",
         help="Seconds between updates (may be float)",
         metavar="N",
-        dest="update_delay",
+        dest="interval_delay",
         type=float,
         default=2.0,
     )
@@ -454,18 +454,25 @@ class Ui:
 
     SCREEN_WINDOW_MAX_HEIGHT = 2
 
-    def __init__(self, screen_count, wallpaper_count, update_delay):
+    HEADER_TEMPLATE = ("Found {wallpaper_count:d} wallpapers,"
+                       " updating every {interval_delay:.1f} seconds on"
+                       " {screen_count:d} screens"
+                       " ({total_run_time:s} total)"
+                    )
+
+    def __init__(self):
         self.init_curses()
         self.key_listeners = dict()
 
-        self.ping=0
-
-        self.screen_count = screen_count
         self.header_string = ""
-        self.screen_strings = ["" for _ in range(screen_count)]
         self.footer_string = ""
+        self.screen_count = 0
+        self.screen_strings = []
+        # self.screen_window_height = 0
+        self.wallpaper_count = 0
+        self.interval_delay = 0
         self.layout()
-        self.update_header(screen_count, wallpaper_count, update_delay)
+        # self.update_header(screen_count, wallpaper_count, interval_delay)
 
     def __enter__(self):
         return self
@@ -561,31 +568,56 @@ class Ui:
 
         header_height = 1
         footer_height = 1
-        max_body_height = height - header_height - footer_height
-        screen_window_height = min(max_body_height // self.screen_count,
-            Ui.SCREEN_WINDOW_MAX_HEIGHT)
-        self.screen_window_height = screen_window_height # used by updates
-        body_height = screen_window_height * self.screen_count
+        body_height = height - header_height - footer_height
 
+        # subwin/derwin args: [height, width,] top_y, left_x
         self.header = self.root_win.subwin(header_height, width, 0, 0)
         self.body = self.root_win.subwin(body_height, width, header_height, 0)
-        # self.footer = self.root_win.subwin(header_height + body_height, 0)
         self.footer = self.root_win.subwin(footer_height, width, height - 1, 0)
 
         self.screen_windows = []
-        for s in range(0, self.screen_count):
-            self.screen_windows.append(self.body.derwin(
-                screen_window_height, width, s * screen_window_height, 0))
+        try:
+            self.screen_window_height = min(body_height // self.screen_count,
+                Ui.SCREEN_WINDOW_MAX_HEIGHT)
+        except ZeroDivisionError:
+            pass
+        else:
+            for idx in range(self.screen_count):
+                self.screen_windows.append(self.body.derwin(
+                    self.screen_window_height,
+                    width,
+                    idx * self.screen_window_height,
+                    0))
 
+    def update_screen_count(self, screen_count):
+        self.screen_count = screen_count
+        self.screen_strings = [""] * screen_count
+        self.layout()
+        self.update_header()
+        self.refresh_footer()
 
-    def update_header(self, screen_count, wallpaper_count, update_delay):
-        playtime = timedelta(seconds=int(
-            wallpaper_count * update_delay / screen_count))
-        self.header_string = (
-            "Found {:d} wallpapers, updating every {:.1f} seconds on {:d} screens ({:s} total)"
-            .format(wallpaper_count, update_delay, screen_count, str(playtime))
-        )
-        self.refresh_header()
+    def update_wallpaper_count(self, wallpaper_count):
+        self.wallpaper_count = wallpaper_count
+        self.update_header()
+
+    def update_interval_delay(self, interval_delay):
+        self.interval_delay = interval_delay
+        self.update_header()
+
+    def update_header(self):
+        try:
+            run_time = (
+                self.wallpaper_count * self.interval_delay / self.screen_count)
+        except ZeroDivisionError:
+            pass
+        else:
+            self.header_string = Ui.HEADER_TEMPLATE.format(
+                wallpaper_count=self.wallpaper_count,
+                interval_delay=self.interval_delay,
+                screen_count=self.screen_count,
+                total_run_time=str(timedelta(seconds=int(run_time))),
+            )
+            self.refresh_header()
 
     def update_screen(self, screen):
         self.screen_strings[screen.idx] = screen.ui_string(
@@ -620,7 +652,7 @@ class WallpaperController:
 
     KNOWN_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif"]
 
-    def __init__(self, args):
+    def __init__(self, ui, args):
         self.args = args
 
         config = Namespace(wallpapers=[])
@@ -653,6 +685,7 @@ class WallpaperController:
         if not self.wallpapers:
             raise Exception("No wallpapers found.")
         self.wallpaper_count = len(self.wallpapers)
+        ui.update_wallpaper_count(self.wallpaper_count)
 
         if args.shuffle:
             self.store_config(needs_sorting=True)
@@ -740,26 +773,24 @@ class ScreenController:
         self._selected_screen.selected = True
 
     def __init__(self, args):
-        self.update_delay = args.update_delay
+        self.interval_delay = args.interval_delay
 
-        self.wallpaper_controller = WallpaperController(args)
-
-        self.screen_count = self._get_screen_count()
-        if not self.screen_count:
+        screen_count = self._get_screen_count()
+        if not screen_count:
             raise Exception("No screens found.")
+        self.screen_count = screen_count
 
-        with Ui(self.screen_count,
-                self.wallpaper_controller.wallpaper_count,
-                self.update_delay
-                ) as self.ui:
-
+        with Ui() as self.ui:
+            self.wallpaper_controller = WallpaperController(self.ui, args)
+            self.ui.update_screen_count(screen_count)
+            self.ui.update_interval_delay(args.interval_delay)
             self.screens = []
-            for s in range(self.screen_count):
+            for idx in range(screen_count):
                 wallpapers = modlist(
                     self.wallpaper_controller.wallpapers,
-                    self.screen_count,
-                    s)
-                self.screens.append(Screen(self.ui, s, wallpapers))
+                    screen_count,
+                    idx)
+                self.screens.append(Screen(self.ui, idx, wallpapers))
 
             self.active_screens = modlist(self.screens[:])
             self._current_screen_offset = 0
@@ -794,8 +825,8 @@ class ScreenController:
         # quit: q/esc
         # self.ui.on_keypress('h', , help)
 
-        # # for s in range(1, self.screen_count + 1):
-        # #     self.ui.on_keypress(str(s), self.select)
+        # # for s in range(self.screen_count):
+        # #     self.ui.on_keypress(str(s + 1), self.select)
         self.ui.on_keypress('p', self.toggle_selected)
         self.ui.on_keypress(ord('\t'), self.cycle_select)
 
@@ -822,7 +853,7 @@ class ScreenController:
         self.ui_thread.start()
 
         self.update_interval = Interval(
-            self.update_delay,
+            self.interval_delay,
             self.next,
             finished
         )
