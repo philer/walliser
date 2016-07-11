@@ -31,6 +31,72 @@ from datetime import timedelta
 from urllib.parse import quote as urlquote
 
 
+### CLI ###
+
+def parse_args():
+    """Parse command line arguments recognized by this module."""
+    parser = ArgumentParser("wallrand",
+        description="Update desktop background periodically",
+        epilog="Thank you and good bye.",
+    )
+    parser.add_argument("-c", "--config-file",
+        help="Read and store wallpaper data in this file. JSON formatted.",
+        dest="config_file",
+        type=str,
+        default=None,
+    )
+    parser.add_argument("wallpaper_sources",
+        help="Any number of files or directories where wallpapers can be found. Supports globbing",
+        metavar="FILE/DIR",
+        nargs="*",
+        # default=".",
+    )
+    parser.add_argument("-i", "--interval",
+        help="Seconds between updates (may be float)",
+        metavar="N",
+        dest="update_delay",
+        type=float,
+        default=2.0,
+    )
+    sorting_group = parser.add_mutually_exclusive_group()
+    sorting_group.add_argument("-s", "--shuffle",
+        help="Cycle through wallpapers in random order.",
+        dest="shuffle",
+        action='store_true',
+        default=True,
+    )
+    sorting_group.add_argument("-S", "--sort",
+        help="Cycle through wallpapers in alphabetical order (fully resolved path).",
+        dest="shuffle",
+        action='store_false',
+    )
+    parser.add_argument("-r", "--min-rating",
+        help="Filter wallpapers by minimum rating",
+        dest="min_rating",
+        type=int,
+        default=0,
+    )
+    parser.add_argument("-R", "--max-rating",
+        help="Filter wallpapers by maximum rating",
+        dest="max_rating",
+        type=int,
+        default=None,
+    )
+    parser.add_argument("-p", "--min-purity",
+        help="Filter wallpapers by maximum rating",
+        dest="min_purity",
+        type=int,
+        default=None,
+    )
+    parser.add_argument("-P", "--max-purity",
+        help="Filter wallpapers by minimum rating",
+        dest="max_purity",
+        type=int,
+        default=0,
+    )
+    return parser.parse_args()
+
+
 ### functional programming helpers ###
 
 def noop(*_):
@@ -882,68 +948,12 @@ class ScreenController:
         self.selected_screen.current_wallpaper.sketchy -= 1
 
 
+class Core:
+    def __init__(self, args):
+        # self.args = args
+        self.screen_controller = ScreenController(args)
+
 
 # run
 if __name__ == "__main__":
-    parser = ArgumentParser("wallrand",
-        description="Update desktop background periodically",
-        epilog="Thank you and good bye.",
-    )
-    parser.add_argument("-c", "--config-file",
-        help="Read and store wallpaper data in this file. JSON formatted.",
-        dest="config_file",
-        type=str,
-        default=None,
-    )
-    parser.add_argument("wallpaper_sources",
-        help="Any number of files or directories where wallpapers can be found. Supports globbing",
-        metavar="FILE/DIR",
-        nargs="*",
-        # default=".",
-    )
-    parser.add_argument("-i", "--interval",
-        help="Seconds between updates (may be float)",
-        metavar="N",
-        dest="update_delay",
-        type=float,
-        default=2.0,
-    )
-    sorting_group = parser.add_mutually_exclusive_group()
-    sorting_group.add_argument("-s", "--shuffle",
-        help="Cycle through wallpapers in random order.",
-        dest="shuffle",
-        action='store_true',
-        default=True,
-    )
-    sorting_group.add_argument("-S", "--sort",
-        help="Cycle through wallpapers in alphabetical order (fully resolved path).",
-        dest="shuffle",
-        action='store_false',
-    )
-    parser.add_argument("-r", "--min-rating",
-        help="Filter wallpapers by minimum rating",
-        dest="min_rating",
-        type=int,
-        default=0,
-    )
-    parser.add_argument("-R", "--max-rating",
-        help="Filter wallpapers by maximum rating",
-        dest="max_rating",
-        type=int,
-        default=None,
-    )
-    parser.add_argument("-p", "--min-purity",
-        help="Filter wallpapers by maximum rating",
-        dest="min_purity",
-        type=int,
-        default=None,
-    )
-    parser.add_argument("-P", "--max-purity",
-        help="Filter wallpapers by minimum rating",
-        dest="max_purity",
-        type=int,
-        default=0,
-    )
-    # from pprint import pprint
-    # pprint(parser.parse_args())
-    ScreenController(parser.parse_args())
+    Core(parse_args())
