@@ -283,7 +283,7 @@ class Wallpaper(Observable):
 
     def to_dict(self):
         return {
-            "path":   self.path,
+            "path": self.path,
             "rating": self.rating,
             "sketchy": self.sketchy,
         }
@@ -664,11 +664,14 @@ class ScreenController:
     @property
     def selected_screen(self):
         """Return selected screen. If none is selected select current_screen."""
-        if self._selected_screen:
-            return self._selected_screen
-        # elif self.current_screen:
-        self.select(self.current_screen)
         return self._selected_screen
+
+    @selected_screen.setter
+    def selected_screen(self, selected_screen):
+        """Return selected screen. If none is selected select current_screen."""
+        self._selected_screen.selected = False
+        self._selected_screen = selected_screen
+        self._selected_screen.selected = True
 
     def __init__(self, args):
         self.update_delay = args.update_delay
@@ -695,7 +698,8 @@ class ScreenController:
             self.active_screens = modlist(self.screens[:])
             self._current_screen_offset = 0
             self.current_screen.current = True
-            self._selected_screen = None
+            self._selected_screen = self.screens[0]
+            self._selected_screen.selected = True
 
             self.update_live_screens()
 
@@ -715,9 +719,17 @@ class ScreenController:
         def interrupt(*_):
             finished.set()
 
-        for s in range(1, self.screen_count + 1):
-            self.ui.on_keypress(str(s), self.select)
-        self.ui.on_keypress('0', self.deselect)
+        # TODO:
+        # next/prev (global): n/b
+        # next/prev (current): right/left
+        # (un)pause (global): p
+        # (un)pause (current): space
+        # rating/purity: ws/ed | ws/ad
+        # quit: q/esc
+        # self.ui.on_keypress('h', , help)
+
+        # # for s in range(1, self.screen_count + 1):
+        # #     self.ui.on_keypress(str(s), self.select)
         self.ui.on_keypress('p', self.toggle_selected)
         self.ui.on_keypress(ord('\t'), self.cycle_select)
 
@@ -733,8 +745,8 @@ class ScreenController:
 
         self.ui.on_keypress(curses.KEY_RESIZE, self.update_ui)
 
-        self.ui.on_keypress('q', interrupt)
-        self.ui.on_keypress('Q', interrupt)
+        self.ui.on_keypress('q',     interrupt)
+        self.ui.on_keypress('Q',     interrupt)
         signal.signal(signal.SIGINT, interrupt)
 
         self.ui_thread = Thread(
@@ -775,18 +787,18 @@ class ScreenController:
         )
 
     def next(self):
-        screen = self.current_screen
-        if screen:
-            self.current_screen.current = False
+        current = self.current_screen
+        if current:
+            current.current = False
             self._current_screen_offset += 1
             self.current_screen.current = True
             self.current_screen.next_wallpaper()
             self.update_live_screens()
 
     def prev(self):
-        screen = self.current_screen
-        if screen:
-            self.current_screen.prev_wallpaper()
+        current = self.current_screen
+        if current:
+            current.prev_wallpaper()
             self.current_screen.current = False
             self._current_screen_offset -= 1
             self.current_screen.current = True
@@ -801,6 +813,7 @@ class ScreenController:
         self.update_interval.reset()
 
     def select(self, scr):
+        """Flexible input setter for selected_screen"""
         if isinstance(scr, Screen):
             idx = scr.idx
         elif isinstance(scr, int):
@@ -809,53 +822,38 @@ class ScreenController:
             idx = int(scr) - 1
         else:
             raise TypeError()
-
-        try:
-            self._selected_screen.selected = False
-        except AttributeError:
-            pass
-        self._selected_screen = self.screens[idx]
-        self._selected_screen.selected = True
-
-    def deselect(self, _):
-        self._selected_screen.selected = False
-        self._selected_screen = None
+        # We rely on the @property setter
+        self.selected_screen = self.screens[idx]
 
     def cycle_select(self, _):
+        """Advance the selected screen to the next of all screens."""
+        # We rely on the @property getter/setter
         idx = self.selected_screen.idx
-        self.select(self.screens[(idx + 1) % self.screen_count])
-
-    def toggle_selected(self, _):
-        screen = self.selected_screen
-        if screen:
-            if screen.paused:
-                self.unpause_selected()
-            else:
-                self.pause_selected()
+        self.selected_screen = self.screens[(idx + 1) % self.screen_count]
 
     def pause_selected(self):
-        screen = self.selected_screen
-        if screen and not screen.paused:
-            screen.paused = True
-            self._update_active_screens()
+        self.selected_screen.paused = True
+        self._update_active_screens()
 
     def unpause_selected(self):
-        screen = self.selected_screen
-        if screen and screen.paused:
-            screen.paused = False
-            self._update_active_screens()
+        self.selected_screen.paused = False
+        self._update_active_screens()
+
+    def toggle_selected(self, _):
+        self.selected_screen.paused = not self.selected_screen.paused
+        self._update_active_screens()
 
     def _update_active_screens(self):
-        self.current_screen.current = False
+        if self.current_screen:
+            self.current_screen.current = False
         active_screens = [s for s in self.screens if not s.paused]
         if active_screens:
-            # We only overwrite self.active_screens if it's not empty
-            # so self.select_screen can still fall back on self.current_screen
             self.active_screens = modlist(active_screens)
             self.current_screen.current = True
-            self.update_interval.start()
+            self.update_interval.start() # TODO remove
         else:
-            self.update_interval.stop()
+            self.active_screens = []
+            self.update_interval.stop() # TODO remove
 
     def next_on_selected(self, _):
         """Update selected (or current) screen to the next wallpaper."""
@@ -921,6 +919,30 @@ if __name__ == "__main__":
         help="Cycle through wallpapers in alphabetical order (fully resolved path).",
         dest="shuffle",
         action='store_false',
+    )
+    parser.add_argument("-r", "--min-rating",
+        help="Filter wallpapers by minimum rating",
+        dest="min_rating",
+        type=int,
+        default=0,
+    )
+    parser.add_argument("-R", "--max-rating",
+        help="Filter wallpapers by maximum rating",
+        dest="max_rating",
+        type=int,
+        default=None,
+    )
+    parser.add_argument("-p", "--min-purity",
+        help="Filter wallpapers by maximum rating",
+        dest="min_purity",
+        type=int,
+        default=None,
+    )
+    parser.add_argument("-P", "--max-purity",
+        help="Filter wallpapers by minimum rating",
+        dest="max_purity",
+        type=int,
+        default=0,
     )
     # from pprint import pprint
     # pprint(parser.parse_args())
