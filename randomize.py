@@ -19,12 +19,13 @@ from glob import iglob as glob
 # from pathlib import Path
 import json
 
+import asyncio
 from threading import Thread, Event
-# import time
-# import asyncio
+from time import sleep
 import curses
 
 from operator import attrgetter
+from functools import wraps
 # import string
 import random
 from datetime import timedelta
@@ -222,29 +223,30 @@ class Interval(Thread):
     See threading.Timer for running something only once.
     """
 
-    def __init__(self, delay, function, terminated=None):
+    def __init__(self, delay, function, on_exception=None):
         Thread.__init__(self)
         self.delay = delay
         self.function = function
-        self.interrupted = Event()
-        self.interrupted.set()
+        self.paused = Event()
+        self.paused.set()
         self.start_running = Event()
-        self.terminated = terminated if terminated else Event()
+        self.terminated = False
+        self.on_exception = on_exception or noop
 
     def is_running(self):
         """Whether the interval loop is started or stopped"""
-        return not self.interrupted.is_set()
+        return not self.paused.is_set()
 
     def start(self):
         if not self.is_running():
-            self.interrupted.clear()
+            self.paused.clear()
             self.start_running.set()
             if not self.is_alive():
                 Thread.start(self)
 
     def stop(self):
         """Stop the timer loop and don't execute anything anymore."""
-        self.interrupted.set()
+        self.paused.set()
 
     def toggle(self):
         if self.is_running():
@@ -263,26 +265,27 @@ class Interval(Thread):
         self.reset()
 
     def terminate(self):
-        self.terminated.set()
-        self.interrupted.set()
+        self.terminated = True
+        self.paused.set()
         self.start_running.set()
 
     def run(self):
         try:
-            while not self.terminated.is_set():
+            while not self.terminated:
                 self.start_running.wait()
                 self.start_running.clear()
-                while not self.interrupted.wait(self.delay):
+                while not self.paused.wait(self.delay):
                     self.function()
         except Exception as exc:
-            self.run_exception = exc
-            self.terminate()
+            self.on_exception(exc)
 
 
 ### Models ###
 
 def observed(method):
-    """Decorator to be added on methods that should notify observers post op."""
+    """Decorator to be added on methods that should notify observers
+    after they were executed."""
+    @wraps(method)
     def wrapper(self, *args, **kwargs):
         method(self, *args, **kwargs)
         self._notify_observers()
@@ -520,7 +523,8 @@ class Ui:
         curses.curs_set(0)
 
         # wait n/10 seconds on getch(), then return ERR
-        curses.halfdelay(1)
+        # curses.halfdelay(1)
+        # self.root_win.nodelay(1)
 
     def exit_curses(self):
         """Restores terminal to its normal state. (compare curses.wrapper)"""
@@ -530,36 +534,27 @@ class Ui:
         curses.endwin()
 
 
-    def run_event_loop(self, finished):
+    def process_keypress_listeners(self, char):
+        # # char = self.root_win.getch()
+        # if char == curses.ERR:
+        #     return False
+        key = curses.keyname(char).decode("utf-8")
+        self.update_footer("pressed key '{:s}' ({:d})".format(key, char))
+        if char == curses.KEY_RESIZE:
+            self.layout()
+            self.refresh_header()
+            self.refresh_footer()
+            # Not responsible for body content here, done via listener
         try:
-            while not finished.is_set():
-                char = self.root_win.getch()
-                if char == curses.ERR:
-                    continue
-
-                key = curses.keyname(char).decode("utf-8")
-                self.update_footer("pressed key '{:s}' ({:d})".format(key, char))
-
-                if char == curses.KEY_RESIZE:
-                    self.layout()
-                    self.refresh_header()
-                    self.refresh_footer()
-                    # Not responsible for body content here, done via listener
-
-                try:
-                    for listener in self.key_listeners[char]:
-                        listener(char)
-                except KeyError:
-                    pass
-                try:
-                    for listener in self.key_listeners[key]:
-                        listener(key)
-                except KeyError:
-                    pass
-
-        except Exception as exc:
-            self.run_event_loop_exception = exc
-            finished.set()
+            for listener in self.key_listeners[char]:
+                listener()
+        except KeyError:
+            pass
+        try:
+            for listener in self.key_listeners[key]:
+                listener()
+        except KeyError:
+            pass
 
     def on_keypress(self, key, callback):
         if key in self.key_listeners:
@@ -832,7 +827,7 @@ class ScreenController:
             scr.current_wallpaper for scr in self.screens
         )
 
-    def next(self, *_):
+    def next(self):
         current = self.current_screen
         if current:
             current.current = False
@@ -841,7 +836,7 @@ class ScreenController:
             self.current_screen.next_wallpaper()
             self.update_live_screens()
 
-    def prev(self, *_):
+    def prev(self):
         current = self.current_screen
         if current:
             current.prev_wallpaper()
@@ -863,27 +858,27 @@ class ScreenController:
         # We rely on the @property setter
         self.selected_screen = self.screens[idx]
 
-    def select_next(self, *_):
+    def select_next(self):
         """Advance the selected screen to the next of all screens."""
         # We rely on the @property getter/setter
         idx = self.selected_screen.idx
         self.selected_screen = self.screens[(idx + 1) % self.screen_count]
 
-    def select_prev(self, *_):
+    def select_prev(self):
         """Advance the selected screen to the next of all screens."""
         # We rely on the @property getter/setter
         idx = self.selected_screen.idx
         self.selected_screen = self.screens[(idx - 1) % self.screen_count]
 
-    def pause_selected(self, *_):
+    def pause_selected(self):
         self.selected_screen.paused = True
         self._update_active_screens()
 
-    def unpause_selected(self, *_):
+    def unpause_selected(self):
         self.selected_screen.paused = False
         self._update_active_screens()
 
-    def toggle_selected(self, *_):
+    def toggle_selected(self):
         self.selected_screen.paused = not self.selected_screen.paused
         self._update_active_screens()
 
@@ -899,29 +894,29 @@ class ScreenController:
             self.active_screens = []
             # self.update_interval.stop() # TODO remove
 
-    def next_on_selected(self, *_):
+    def next_on_selected(self):
         """Update selected (or current) screen to the next wallpaper."""
         self.selected_screen.next_wallpaper()
         self.update_live_screens()
 
-    def prev_on_selected(self, *_):
+    def prev_on_selected(self):
         """Update selected (or current) screen to the previous wallpaper."""
         self.selected_screen.prev_wallpaper()
         self.update_live_screens()
 
-    def inc_rating_on_selected(self, *_):
+    def inc_rating_on_selected(self):
         """Increment rating of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.rating += 1
 
-    def dec_rating_on_selected(self, *_):
+    def dec_rating_on_selected(self):
         """Decrement rating of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.rating -= 1
 
-    def inc_purity_on_selected(self, *_):
+    def inc_purity_on_selected(self):
         """Increment purity of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.purity += 1
 
-    def dec_purity_on_selected(self, *_):
+    def dec_purity_on_selected(self):
         """Decrement purity of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.purity -= 1
 
@@ -930,54 +925,49 @@ class Core:
     """Main entry point to the application, manages run loops."""
 
     def __init__(self, args):
-        # self.args = args
-        self.interrupted = Event()
-
         self.interval_delay = args.interval_delay
+        self.interrupted = False
+        self.thread_exceptions = []
 
         with Ui() as self.ui:
             self.ui.update_interval_delay(args.interval_delay)
-
             self.wallpaper_controller = WallpaperController(self.ui, args)
             self.screen_controller = ScreenController(self.ui,
                 self.wallpaper_controller)
-
+            self.screen_controller.update_live_screens()
             self.run()
 
-    def interrupt(self, *_):
-        """Trigger thread interruption event to halt everything."""
-        self.interrupted.set()
+    def assign_ui_listeners(self):
+        """Set up Ui interaction keypress listeners.
 
-    def run(self):
-        """Setup listeners and threads and start loops."""
+        The following keyboard mappings are currently implemented/planned:
+          - next/prev (global): n/b
+          - next/prev (current): right/left
+          - (un)pause (global): p
+          - (un)pause (current): space
+          - rating/purity: ws/ed (ws/ad)
+          - help: h
+          - quit: ESC (qQ)
+        """
 
-        ui_thread = Thread(
-            target=self.ui.run_event_loop,
-            args=[self.interrupted]
-        )
-        update_interval = Interval(
-            self.interval_delay,
-            self.screen_controller.next,
-            self.interrupted
-        )
+        keypress = self.ui.on_keypress
+
+        # keypress('q',                self.interrupt)
+        # keypress('Q',                self.interrupt)
+        keypress(27,                 self.interrupt) # ESC
+        signal.signal(signal.SIGINT, self.interrupt)
 
         def with_interval_reset(fn):
-            def wrapped(*args):
+            """Some keypress listeners should reset the wallpaper interval."""
+            @wraps(fn)
+            def wrapper(*args):
                 fn(*args)
-                update_interval.reset()
-            return wrapped
-
-        # TODO:
-        # next/prev (global): n/b
-        # next/prev (current): right/left
-        # (un)pause (global): p
-        # (un)pause (current): space
-        # rating/purity: ws/ed | ws/ad
-        # quit: q/esc
-        # self.ui.on_keypress('h', , help)
+                self.update_interval.reset()
+            return wrapper
 
         scrctrl = self.screen_controller
-        keypress = self.ui.on_keypress
+
+        keypress(curses.KEY_RESIZE, scrctrl.update_ui)
 
         keypress('n', with_interval_reset(scrctrl.next))
         keypress('b', with_interval_reset(scrctrl.prev))
@@ -999,25 +989,50 @@ class Core:
         keypress('e', scrctrl.inc_purity_on_selected)
         keypress('d', scrctrl.dec_purity_on_selected)
 
-        keypress(curses.KEY_RESIZE, scrctrl.update_ui)
+    def run(self):
+        """Setup listeners and threads and start loops."""
 
-        # keypress('q',                self.interrupt)
-        # keypress('Q',                self.interrupt)
-        keypress(27,                self.interrupt) # ESC
-        signal.signal(signal.SIGINT, self.interrupt)
+        self.assign_ui_listeners()
 
-        self.screen_controller.update_live_screens()
+        ui_thread = Thread(target=self.run_event_loop)
+
+        self.update_interval = Interval(
+            self.interval_delay,
+            self.screen_controller.next,
+            self.interrupt,
+        )
 
         ui_thread.start()
-        update_interval.start()
-        self.interrupted.wait()
-        update_interval.terminate()
+        self.update_interval.start()
+        ui_thread.join()
+        self.update_interval.terminate()
 
-        # pylint: disable=E1101
-        if hasattr(update_interval, 'run_exception'):
-            raise update_interval.run_exception
-        if hasattr(self.ui, 'run_event_loop_exception'):
-            raise self.ui.run_event_loop_exception
+        for exc in self.thread_exceptions:
+            raise exc
+
+    def run_event_loop(self):
+        """Start the event loop processing Ui events.
+        This method logs thread internal Exceptions.
+        """
+        try:
+            # wait n/10 seconds on getch(), then return ERR
+            curses.halfdelay(1)
+            while not self.interrupted:
+
+                char = self.ui.root_win.getch()
+                while char != curses.ERR:
+                    self.ui.process_keypress_listeners(char)
+                    char = self.ui.root_win.getch()
+                sleep(0.1)
+
+        except Exception as exc:
+            self.interrupt(exc)
+
+    def interrupt(self, *excpetions):
+        for exception in excpetions:
+            if isinstance(exception, BaseException):
+                self.thread_exceptions.append(exception)
+        self.interrupted = True
 
 
 # run
