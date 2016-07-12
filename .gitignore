@@ -1,2 +1,4 @@
 *.json
 *.sublime-*
+
+__pycache__

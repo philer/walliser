@@ -31,13 +31,6 @@ from datetime import timedelta
 from urllib.parse import quote as urlquote
 
 
-def set_wallpapers(*wallpaper_paths):
-    """Low level wallpaper setter using feh"""
-    subprocess.call(
-        ["feh", "--bg-fill", "--no-fehbg"] + list(wallpaper_paths))
-
-### CLI ###
-
 def parse_args():
     """Parse command line arguments recognized by this module."""
     parser = ArgumentParser("wallrand",
@@ -100,6 +93,11 @@ def parse_args():
         default=0,
     )
     return parser.parse_args()
+
+
+def set_wallpapers(*wallpaper_paths):
+    """Low level wallpaper setter using feh"""
+    subprocess.call(["feh", "--bg-fill", "--no-fehbg"] + list(wallpaper_paths))
 
 
 ### functional programming helpers ###
@@ -291,6 +289,10 @@ def observed(method):
     return wrapper
 
 class Observable:
+    """An observable object calls registered callbacks whenever one of its
+    @observed methods (including @property setters) is called.
+    """
+
     def __init__(self):
         self._observers = dict()
 
@@ -665,6 +667,8 @@ class Ui:
 ### Controllers ###
 
 class WallpaperController:
+    """Manages a collection of relevant wallpapers and takes care of some
+    config related IO (TODO: isolate the IO)."""
 
     KNOWN_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif"]
 
@@ -923,6 +927,8 @@ class ScreenController:
 
 
 class Core:
+    """Main entry point to the application, manages run loops."""
+
     def __init__(self, args):
         # self.args = args
         self.interrupted = Event()
