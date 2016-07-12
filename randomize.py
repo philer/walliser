@@ -828,7 +828,7 @@ class ScreenController:
             scr.current_wallpaper for scr in self.screens
         )
 
-    def next(self):
+    def next(self, *_):
         current = self.current_screen
         if current:
             current.current = False
@@ -837,7 +837,7 @@ class ScreenController:
             self.current_screen.next_wallpaper()
             self.update_live_screens()
 
-    def prev(self):
+    def prev(self, *_):
         current = self.current_screen
         if current:
             current.prev_wallpaper()
@@ -859,27 +859,27 @@ class ScreenController:
         # We rely on the @property setter
         self.selected_screen = self.screens[idx]
 
-    def select_next(self, _):
+    def select_next(self, *_):
         """Advance the selected screen to the next of all screens."""
         # We rely on the @property getter/setter
         idx = self.selected_screen.idx
         self.selected_screen = self.screens[(idx + 1) % self.screen_count]
 
-    def select_prev(self, _):
+    def select_prev(self, *_):
         """Advance the selected screen to the next of all screens."""
         # We rely on the @property getter/setter
         idx = self.selected_screen.idx
         self.selected_screen = self.screens[(idx - 1) % self.screen_count]
 
-    def pause_selected(self):
+    def pause_selected(self, *_):
         self.selected_screen.paused = True
         self._update_active_screens()
 
-    def unpause_selected(self):
+    def unpause_selected(self, *_):
         self.selected_screen.paused = False
         self._update_active_screens()
 
-    def toggle_selected(self, _):
+    def toggle_selected(self, *_):
         self.selected_screen.paused = not self.selected_screen.paused
         self._update_active_screens()
 
@@ -895,29 +895,29 @@ class ScreenController:
             self.active_screens = []
             # self.update_interval.stop() # TODO remove
 
-    def next_on_selected(self, _):
+    def next_on_selected(self, *_):
         """Update selected (or current) screen to the next wallpaper."""
         self.selected_screen.next_wallpaper()
         self.update_live_screens()
 
-    def prev_on_selected(self, _):
+    def prev_on_selected(self, *_):
         """Update selected (or current) screen to the previous wallpaper."""
         self.selected_screen.prev_wallpaper()
         self.update_live_screens()
 
-    def inc_rating_on_selected(self, _):
+    def inc_rating_on_selected(self, *_):
         """Increment rating of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.rating += 1
 
-    def dec_rating_on_selected(self, _):
+    def dec_rating_on_selected(self, *_):
         """Decrement rating of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.rating -= 1
 
-    def inc_purity_on_selected(self, _):
+    def inc_purity_on_selected(self, *_):
         """Increment purity of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.purity += 1
 
-    def dec_purity_on_selected(self, _):
+    def dec_purity_on_selected(self, *_):
         """Decrement purity of current wallpaper on selected screen."""
         self.selected_screen.current_wallpaper.purity -= 1
 
