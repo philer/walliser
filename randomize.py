@@ -19,7 +19,7 @@ from glob import iglob as glob
 # from pathlib import Path
 import json
 
-import asyncio
+# import asyncio
 from threading import Thread, Event
 from time import sleep
 import curses
@@ -827,6 +827,15 @@ class ScreenController:
             scr.current_wallpaper for scr in self.screens
         )
 
+    def cycle_screens(self):
+        """Shift entire screens array by one position."""
+        for screen in self.screens:
+            screen.idx = (screen.idx + 1) % self.screen_count
+        self.screens = self.screens[1:] + self.screens[0:1]
+        self._update_active_screens()
+        self.update_ui()
+        self.update_live_screens()
+
     def next(self):
         current = self.current_screen
         if current:
@@ -878,7 +887,7 @@ class ScreenController:
         self.selected_screen.paused = False
         self._update_active_screens()
 
-    def toggle_selected(self):
+    def pause_unpause_selected(self):
         self.selected_screen.paused = not self.selected_screen.paused
         self._update_active_screens()
 
@@ -928,7 +937,6 @@ class Core:
         self.interval_delay = args.interval_delay
         self.interrupted = False
         self.thread_exceptions = []
-
         with Ui() as self.ui:
             self.ui.update_interval_delay(args.interval_delay)
             self.wallpaper_controller = WallpaperController(self.ui, args)
@@ -936,6 +944,8 @@ class Core:
                 self.wallpaper_controller)
             self.screen_controller.update_live_screens()
             self.run()
+        for exc in self.thread_exceptions:
+            raise exc
 
     def assign_ui_listeners(self):
         """Set up Ui interaction keypress listeners.
@@ -971,11 +981,12 @@ class Core:
 
         keypress('n', with_interval_reset(scrctrl.next))
         keypress('b', with_interval_reset(scrctrl.prev))
+        keypress('x', with_interval_reset(scrctrl.cycle_screens))
 
         keypress(ord('\t'),         scrctrl.select_next)
         keypress(curses.KEY_DOWN,   scrctrl.select_next)
         keypress(curses.KEY_UP,     scrctrl.select_prev)
-        keypress(' ',               scrctrl.toggle_selected)
+        keypress(' ',               scrctrl.pause_unpause_selected)
 
         keypress('a', with_interval_reset(scrctrl.next_on_selected))
         keypress('q', with_interval_reset(scrctrl.prev_on_selected))
@@ -1006,9 +1017,6 @@ class Core:
         self.update_interval.start()
         ui_thread.join()
         self.update_interval.terminate()
-
-        for exc in self.thread_exceptions:
-            raise exc
 
     def run_event_loop(self):
         """Start the event loop processing Ui events.
