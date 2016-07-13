@@ -185,6 +185,14 @@ def rating_string(value, length=5, *, positive="+", negative="-",
         (string, padchar) = next((s,p) for s,p in options() if len(s) <= length)
         return right_pad(length, string, padchar)
 
+def rating_as_string(rating, length=5):
+    return rating_string(rating, length,
+        positive="★", positive_bg="☆")
+
+def purity_as_string(purity, length=5):
+    return rating_string(purity, length,
+        negative="♥", negative_bg="♡", positive="~", positive_bg="♡")
+
 
 ### structural helpers ###
 
@@ -250,6 +258,10 @@ class Wallpaper(Observable):
     """Model representing one wallpaper"""
 
     @property
+    def url(self):
+        return "file://" + urlquote(self.path)
+
+    @property
     def rating(self):
         return self._rating
 
@@ -281,16 +293,6 @@ class Wallpaper(Observable):
 
     def __hash__(self, other):
         return hash(Wallpaper) ^ hash(self.path)
-
-    def purity_as_string(self, length=5):
-        return rating_string(self.purity, length,
-            negative="♥", negative_bg="♡", positive="~", positive_bg="♡")
-            # positive="♥", positive_bg="♡", negative="~")
-
-    def rating_as_string(self, length=5):
-        return rating_string(self.rating, length,
-            positive="★", positive_bg="☆")
-            # positive="✱")
 
     def to_dict(self):
         return {
@@ -363,33 +365,6 @@ class Screen(Observable):
 
     def prev_wallpaper(self):
         self.cycle_wallpaper(-1)
-
-    def ui_string(self, compact=0):
-        return self.ui_line() if compact else self.ui_multiline()
-
-    def ui_line(self):
-        """The shortest possible user friendly description of a wallpaper."""
-        return " ".join((
-            (
-                  ("»" if self.selected else " ")
-                + ("*" if self.current else "·" if self.paused else " ")
-                + str(self.idx + 1)
-            ),
-               "[" + self.current_wallpaper.rating_as_string(3)
-            + "][" + self.current_wallpaper.purity_as_string(3) + "]",
-            "file://" + urlquote(self.current_wallpaper.path),
-        ))
-
-    def ui_multiline(self):
-        """Double-line user friendly description of a wallpaper."""
-        return " ".join((
-            str(self.idx + 1),
-            "[" + self.current_wallpaper.rating_as_string() + "]",
-            "[" + self.current_wallpaper.purity_as_string() + "]",
-            "current" if self.current
-                else "paused " if self.paused else "       ",
-            "selected" if self.selected else "          ",
-        )) + "\nfile://" + urlquote(self.current_wallpaper.path)
 
 
 ### View ###
@@ -515,12 +490,13 @@ class Ui:
         self.body = self.root_win.subwin(body_height, width, header_height, 0)
         self.footer = self.root_win.subwin(footer_height, width, height - 1, 0)
 
+        body_padding = 1
         self.body.border()
 
         self.screen_windows = []
         try:
             self.screen_window_height = min(
-                (body_height - 2) // self.screen_count,
+                (body_height - 2*body_padding) // self.screen_count,
                 Ui.SCREEN_WINDOW_MAX_HEIGHT)
         except ZeroDivisionError:
             pass
@@ -528,9 +504,9 @@ class Ui:
             for idx in range(self.screen_count):
                 self.screen_windows.append(self.body.derwin(
                     self.screen_window_height,
-                    width - 2,
-                    idx * self.screen_window_height + 1,
-                    1))
+                    width - 2*body_padding,
+                    idx * self.screen_window_height + body_padding,
+                    body_padding))
 
     def update_screen_count(self, screen_count):
         self.screen_count = screen_count
@@ -563,12 +539,12 @@ class Ui:
             self.refresh_header()
 
     def update_screen(self, screen):
-        self.screen_strings[screen.idx] = screen.ui_string(
+        self.screen_strings[screen.idx] = self.screen_to_string(screen,
             self.screen_window_height == 1)
 
         win = self.screen_windows[screen.idx]
         if screen.selected:
-            win.bkgd(' ', curses.A_STANDOUT)
+            win.bkgd(' ', curses.A_BOLD) #curses.A_REVERSE
         else:
             win.bkgd(' ', curses.A_NORMAL)
 
@@ -585,6 +561,7 @@ class Ui:
         self._set_window_content(
             self.screen_windows[idx],
             self.screen_strings[idx])
+        # win.chgat(0, 0, curses.A_REVERSE | curses.A_BOLD)
 
     def refresh_footer(self):
         self._set_window_content(self.footer, self.footer_string)
@@ -595,6 +572,37 @@ class Ui:
         win.addstr(crop(height, width - 1, string))
         win.refresh()
 
+    def screen_to_string(self, screen, compact=0):
+        if compact:
+            return self.screen_to_line(screen)
+        else:
+            return self.screen_to_multiline(screen)
+
+    def screen_to_line(self, screen):
+        """The shortest possible user friendly description of a wallpaper."""
+        return ("{selected:s} {idx:d}{current_or_paused:s}"
+                " [{rating:s}][{purity:s}] {url:s}").format(
+            idx = screen.idx + 1,
+            selected = "»" if screen.selected else " ",
+            current_or_paused = "*" if screen.current else
+                                "·" if screen.paused else " ",
+            rating = rating_as_string(screen.current_wallpaper.rating, 3),
+            purity = purity_as_string(screen.current_wallpaper.purity, 3),
+            url = screen.current_wallpaper.url,
+        )
+
+    def screen_to_multiline(self, screen):
+        """Double-line user friendly description of a wallpaper."""
+        return ("{selected:s} {idx:d}{current:s} [{rating:s}][{purity:s}]"
+                " {paused:s}\n{url:s}").format(
+            idx = screen.idx + 1,
+            selected = "»" if screen.selected else " ",
+            current = "*" if screen.current else " ",
+            paused = "paused" if screen.paused else "      ",
+            rating = rating_as_string(screen.current_wallpaper.rating, 5),
+            purity = purity_as_string(screen.current_wallpaper.purity, 5),
+            url = screen.current_wallpaper.url,
+        )
 
 ### Controllers ###
 
