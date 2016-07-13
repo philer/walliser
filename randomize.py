@@ -936,7 +936,6 @@ class Core:
     def __init__(self, args):
         self.interval_delay = args.interval_delay
         self.interrupted = False
-        self.thread_exceptions = []
         with Ui() as self.ui:
             self.ui.update_interval_delay(args.interval_delay)
             self.wallpaper_controller = WallpaperController(self.ui, args)
@@ -944,8 +943,6 @@ class Core:
                 self.wallpaper_controller)
             self.screen_controller.update_live_screens()
             self.run()
-        for exc in self.thread_exceptions:
-            raise exc
 
     def assign_ui_listeners(self):
         """Set up Ui interaction keypress listeners.
@@ -1004,42 +1001,30 @@ class Core:
         """Setup listeners and threads and start loops."""
 
         self.assign_ui_listeners()
-
-        ui_thread = Thread(target=self.run_event_loop)
-
+        
         self.update_interval = Interval(
             self.interval_delay,
             self.screen_controller.next,
             self.interrupt,
         )
-
-        ui_thread.start()
         self.update_interval.start()
-        ui_thread.join()
-        self.update_interval.terminate()
+        try:
+            self.run_event_loop()
+        finally:
+            self.update_interval.terminate()
 
     def run_event_loop(self):
         """Start the event loop processing Ui events.
         This method logs thread internal Exceptions.
         """
-        try:
-            # wait n/10 seconds on getch(), then return ERR
-            curses.halfdelay(1)
-            while not self.interrupted:
+        # wait n/10 seconds on getch(), then return ERR
+        curses.halfdelay(1)
+        while not self.interrupted:
+            char = self.ui.root_win.getch()
+            if char != curses.ERR:
+                self.ui.process_keypress_listeners(char)
 
-                char = self.ui.root_win.getch()
-                while char != curses.ERR:
-                    self.ui.process_keypress_listeners(char)
-                    char = self.ui.root_win.getch()
-                sleep(0.1)
-
-        except Exception as exc:
-            self.interrupt(exc)
-
-    def interrupt(self, *excpetions):
-        for exception in excpetions:
-            if isinstance(exception, BaseException):
-                self.thread_exceptions.append(exception)
+    def interrupt(self, *_):
         self.interrupted = True
 
 
