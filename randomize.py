@@ -506,7 +506,7 @@ class Ui:
         (height, width) = self.root_win.getmaxyx()
         self.width = width # used by updates
 
-        header_height = 2
+        header_height = 1
         footer_height = 1
         body_height = height - header_height - footer_height
 
@@ -515,9 +515,12 @@ class Ui:
         self.body = self.root_win.subwin(body_height, width, header_height, 0)
         self.footer = self.root_win.subwin(footer_height, width, height - 1, 0)
 
+        self.body.border()
+
         self.screen_windows = []
         try:
-            self.screen_window_height = min(body_height // self.screen_count,
+            self.screen_window_height = min(
+                (body_height - 2) // self.screen_count,
                 Ui.SCREEN_WINDOW_MAX_HEIGHT)
         except ZeroDivisionError:
             pass
@@ -525,9 +528,9 @@ class Ui:
             for idx in range(self.screen_count):
                 self.screen_windows.append(self.body.derwin(
                     self.screen_window_height,
-                    width,
-                    idx * self.screen_window_height,
-                    0))
+                    width - 2,
+                    idx * self.screen_window_height + 1,
+                    1))
 
     def update_screen_count(self, screen_count):
         self.screen_count = screen_count
@@ -565,7 +568,7 @@ class Ui:
 
         win = self.screen_windows[screen.idx]
         if screen.selected:
-            win.bkgd(' ', curses.A_REVERSE)
+            win.bkgd(' ', curses.A_STANDOUT)
         else:
             win.bkgd(' ', curses.A_NORMAL)
 
