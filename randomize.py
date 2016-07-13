@@ -21,7 +21,7 @@ import json
 
 # import asyncio
 from threading import Thread, Event
-from time import sleep
+from time import time #, sleep
 import curses
 
 from operator import attrgetter
@@ -212,72 +212,6 @@ class modlist:
     def remove(self, item):
         self._list.remove(item)
         self._len -= 1
-
-class Interval(Thread):
-    """Call a function every n seconds in a separate Thread
-
-    Interval can be stopped (interrupted temporarily),
-    started (initially or after being stopped) and
-    terminated (end of the Thread).
-
-    See threading.Timer for running something only once.
-    """
-
-    def __init__(self, delay, function, on_exception=None):
-        Thread.__init__(self)
-        self.delay = delay
-        self.function = function
-        self.paused = Event()
-        self.paused.set()
-        self.start_running = Event()
-        self.terminated = False
-        self.on_exception = on_exception or noop
-
-    def is_running(self):
-        """Whether the interval loop is started or stopped"""
-        return not self.paused.is_set()
-
-    def start(self):
-        if not self.is_running():
-            self.paused.clear()
-            self.start_running.set()
-            if not self.is_alive():
-                Thread.start(self)
-
-    def stop(self):
-        """Stop the timer loop and don't execute anything anymore."""
-        self.paused.set()
-
-    def toggle(self):
-        if self.is_running():
-            self.stop()
-        else:
-            self.start()
-
-    def reset(self):
-        """Set the current waiting delay back to its full duration"""
-        if self.is_running():
-            self.stop()
-            self.start()
-
-    def set_delay(self, delay):
-        self.delay = delay
-        self.reset()
-
-    def terminate(self):
-        self.terminated = True
-        self.paused.set()
-        self.start_running.set()
-
-    def run(self):
-        try:
-            while not self.terminated:
-                self.start_running.wait()
-                self.start_running.clear()
-                while not self.paused.wait(self.delay):
-                    self.function()
-        except Exception as exc:
-            self.on_exception(exc)
 
 
 ### Models ###
@@ -935,14 +869,14 @@ class Core:
 
     def __init__(self, args):
         self.interval_delay = args.interval_delay
-        self.interrupted = False
         with Ui() as self.ui:
             self.ui.update_interval_delay(args.interval_delay)
             self.wallpaper_controller = WallpaperController(self.ui, args)
             self.screen_controller = ScreenController(self.ui,
                 self.wallpaper_controller)
+            self.assign_ui_listeners()
             self.screen_controller.update_live_screens()
-            self.run()
+            self.run_event_loop()
 
     def assign_ui_listeners(self):
         """Set up Ui interaction keypress listeners.
@@ -969,7 +903,7 @@ class Core:
             @wraps(fn)
             def wrapper(*args):
                 fn(*args)
-                self.update_interval.reset()
+                self.reset_interval_timeout()
             return wrapper
 
         scrctrl = self.screen_controller
@@ -997,32 +931,26 @@ class Core:
         keypress('e', scrctrl.inc_purity_on_selected)
         keypress('d', scrctrl.dec_purity_on_selected)
 
-    def run(self):
-        """Setup listeners and threads and start loops."""
-
-        self.assign_ui_listeners()
-        
-        self.update_interval = Interval(
-            self.interval_delay,
-            self.screen_controller.next,
-            self.interrupt,
-        )
-        self.update_interval.start()
-        try:
-            self.run_event_loop()
-        finally:
-            self.update_interval.terminate()
-
     def run_event_loop(self):
         """Start the event loop processing Ui events.
         This method logs thread internal Exceptions.
         """
         # wait n/10 seconds on getch(), then return ERR
         curses.halfdelay(1)
+        self.interrupted = False
+        self.reset_interval_timeout()
         while not self.interrupted:
             char = self.ui.root_win.getch()
             if char != curses.ERR:
                 self.ui.process_keypress_listeners(char)
+            # using elif so we can iterate through continuous input faster
+            elif time() > self.next_update:
+                self.screen_controller.next()
+                self.reset_interval_timeout()
+
+    def reset_interval_timeout(self):
+        """Set the countdown for the next update back to full length."""
+        self.next_update = time() + self.interval_delay
 
     def interrupt(self, *_):
         self.interrupted = True
