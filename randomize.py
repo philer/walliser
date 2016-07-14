@@ -31,6 +31,12 @@ import random
 from datetime import timedelta
 from urllib.parse import quote as urlquote
 
+import gzip
+import codecs
+from collections import namedtuple
+
+from PIL import Image
+
 
 def parse_args():
     """Parse command line arguments recognized by this module."""
@@ -254,8 +260,20 @@ class Observable:
             observer(*args)
 
 
+ImageData = namedtuple("ImageData", ["path", "width", "height", "format"])
+
 class Wallpaper(Observable):
     """Model representing one wallpaper"""
+
+    @property
+    def as_dict(self):
+        return {
+            "path": self.path,
+            "rating": self.rating,
+            "purity": self.purity,
+            "size": self.size,
+            "format": self.format,
+        }
 
     @property
     def url(self):
@@ -279,9 +297,9 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
-    def __init__(self, path, rating=0, purity=0):
+    def __init__(self, filedata, rating=0, purity=0):
         Observable.__init__(self)
-        self.path = path
+        (self.path, self.width, self.height, self.format) = filedata
         self.rating = rating
         self.purity = purity
 
@@ -293,13 +311,6 @@ class Wallpaper(Observable):
 
     def __hash__(self, other):
         return hash(Wallpaper) ^ hash(self.path)
-
-    def to_dict(self):
-        return {
-            "path": self.path,
-            "rating": self.rating,
-            "purity": self.purity,
-        }
 
 
 class Screen(Observable):
@@ -582,26 +593,30 @@ class Ui:
         """The shortest possible user friendly description of a wallpaper."""
         return ("{selected:s} {idx:d}{current_or_paused:s}"
                 " [{rating:s}][{purity:s}] {url:s}").format(
-            idx = screen.idx + 1,
-            selected = "»" if screen.selected else " ",
-            current_or_paused = "*" if screen.current else
-                                "·" if screen.paused else " ",
-            rating = rating_as_string(screen.current_wallpaper.rating, 3),
-            purity = purity_as_string(screen.current_wallpaper.purity, 3),
-            url = screen.current_wallpaper.url,
+            idx=screen.idx + 1,
+            selected="»" if screen.selected else " ",
+            current_or_paused="*" if screen.current else
+                              "·" if screen.paused else " ",
+            rating=rating_as_string(screen.current_wallpaper.rating, 3),
+            purity=purity_as_string(screen.current_wallpaper.purity, 3),
+            url=screen.current_wallpaper.url,
         )
 
     def screen_to_multiline(self, screen):
         """Double-line user friendly description of a wallpaper."""
-        return ("{selected:s} {idx:d}{current:s} [{rating:s}][{purity:s}]"
+        return ("{selected:s} {idx:d}{current:s}"
+                "[{rating:s}][{purity:s}] {format:s} {width:d}x{height:d}"
                 " {paused:s}\n{url:s}").format(
-            idx = screen.idx + 1,
-            selected = "»" if screen.selected else " ",
-            current = "*" if screen.current else " ",
-            paused = "paused" if screen.paused else "      ",
-            rating = rating_as_string(screen.current_wallpaper.rating, 5),
-            purity = purity_as_string(screen.current_wallpaper.purity, 5),
-            url = screen.current_wallpaper.url,
+            idx=screen.idx + 1,
+            selected="»" if screen.selected else " ",
+            current="*" if screen.current else " ",
+            paused="paused" if screen.paused else "      ",
+            rating=rating_as_string(screen.current_wallpaper.rating, 5),
+            purity=purity_as_string(screen.current_wallpaper.purity, 5),
+            width=screen.current_wallpaper.width,
+            height=screen.current_wallpaper.height,
+            format=screen.current_wallpaper.format,
+            url=screen.current_wallpaper.url,
         )
 
 ### Controllers ###
@@ -615,91 +630,119 @@ class WallpaperController:
     def __init__(self, ui, args):
         self.args = args
 
-        config = Namespace(wallpapers=[])
-        try:
-            with open(args.config_file, "r") as config_file:
-                config = Namespace(**json.load(config_file))
-        except (TypeError, FileNotFoundError):
-            pass
-        except ValueError:
-            # only raise if the file was not empty (really "malformed")
-            if os.stat(args.config_file).st_size:
-                raise
+        config = {"wallpapers": dict()}
+        if args.config_file:
+            config = self.load_config(args.config_file, config)
 
         if args.wallpaper_sources:
-            wallpaper_paths = set(self._find_wallpapers(args.wallpaper_sources))
+            images = self.image_data(self.find_images(args.wallpaper_sources))
+            self.wallpapers = [
+                Wallpaper(imgdata, **config["wallpapers"].get(
+                    imgdata.path, {"rating": 0, "purity": 0}))
+                for imgdata in images
+            ]
         else:
-            wallpaper_paths = set()
-
-        self.wallpapers = []
-
-        # We discard wallpaper paths that our config already knows about...
-        for wp_data in config.wallpapers:
-            wp = Wallpaper(**wp_data)
-            self.wallpapers.append(wp)
-            wallpaper_paths.discard(wp.path)
-
-        # ... and add the remaining ones as fresh instances.
-        self.wallpapers += list(map(Wallpaper, wallpaper_paths))
+            # images = self.image_data(config["wallpapers"].keys())
+            self.wallpapers = [
+                Wallpaper(self.image_data(path), **info)
+                for path, info in config["wallpapers"]
+            ]
 
         if not self.wallpapers:
             raise Exception("No wallpapers found.")
+        self.store_config(args.config_file, config)
+
         self.wallpaper_count = len(self.wallpapers)
         ui.update_wallpaper_count(self.wallpaper_count)
 
         if args.shuffle:
-            self.store_config(needs_sorting=True)
             random.shuffle(self.wallpapers)
         else:
             self.wallpapers.sort(key=attrgetter("path"))
-            self.store_config(needs_sorting=False)
-
-    def store_config(self, needs_sorting=True, pretty=False):
-        """Save current configuration into given file."""
-        try:
-            with open(self.args.config_file, "w") as config_file:
-                if needs_sorting:
-                    wallpapers = sorted(self.wallpapers, key=attrgetter("path"))
-                else:
-                    wallpapers = self.wallpapers
-
-                data = {
-                    "wallpapers": [wp.to_dict() for wp in wallpapers]
-                }
-                if pretty:
-                    json.dump(data, config_file, indent="\t")
-                else:
-                    json.dump(data, config_file, separators=(",", ":"))
-        except TypeError:
-            pass
 
 
-    def _find_wallpapers(self, patterns):
+    def find_images(self, patterns):
         """Returns an iterable of wallpaper paths matching the given pattern(s).
         Doesn't clear duplicates (use a set).
         """
-        wallpapers = []
         for pattern in patterns:
             pattern = os.path.expanduser(pattern)
             for path in glob(pattern):
                 if os.path.isfile(path):
-                    wallpapers.append(os.path.realpath(path))
+                    yield os.path.realpath(path)
                 else:
-                    wallpapers += self._wallpapers_in_dir(path)
-        return filter(self._is_image_file, wallpapers)
+                    yield from self.images_in_dir(path)
 
-    def _is_image_file(self, path):
-        """Rudimentary check for know filename extensions, no magic."""
-        return path[path.rfind("."):].lower() in self.KNOWN_EXTENSIONS
-
-    def _wallpapers_in_dir(self, root_dir):
+    def images_in_dir(self, root_dir):
         """Helper function to get a list of all wallpapers in a directory"""
-        wallpapers = []
         for directory, _, files in os.walk(root_dir):
             for f in files:
-                wallpapers.append(
-                    os.path.realpath(os.path.join(directory, f)))
-        return wallpapers
+                yield os.path.realpath(os.path.join(directory, f))
+
+    def image_data(self, path):
+        """Retrieve image information by checking real file (headers).
+        This works for single paths (string -> ImageData)
+        and for iterables (iterable<string> -> iterable<ImageData>).
+        """
+        if not isinstance(path, str):
+            return filter(None, map(self.image_data, path))
+        try:
+            img = Image.open(path)
+        except IOError:
+            return None
+        else:
+            return ImageData(
+                path=path,
+                width=img.size[0],
+                height=img.size[1],
+                format=img.format,
+            )
+
+    # def is_image_file(self, path):
+    #     """Rudimentary check for know filename extensions, no magic."""
+    #     return path[path.rfind("."):].lower() in self.KNOWN_EXTENSIONS
+
+    def load_config(self, filename, default=None):
+        """Load data from config file.
+        If file is empty or doesn't exist returns default or raises exception.
+        """
+        try:
+            with self.open_config_file(filename, "r") as config_file:
+                return json.load(config_file)
+        except FileNotFoundError:
+            if default is not None:
+                return default
+            raise
+        except ValueError:
+            # only raise if the file was not empty (really "malformed")
+            if os.stat(filename).st_size and default is not None:
+                return default
+            raise
+
+    def store_config(self, filename, config=dict(), pretty="auto"):
+        """Save current configuration into given file."""
+        config = config or self.load_config(filename)
+        config.update({
+            "wallpapers": {
+                wp.path: {"rating": wp.rating, "purity": wp.purity}
+                for wp in self.wallpapers
+            }
+        })
+        with self.open_config_file(self.args.config_file, "w") as config_file:
+            if pretty == True or pretty == "auto" and filename[-3:] != ".gz":
+                json.dump(config, config_file,
+                    sort_keys=True, indent="\t")
+            else:
+                json.dump(config, config_file,
+                    sort_keys=False, separators=(",", ":"))
+
+    def open_config_file(self, filename, mode="r"):
+        """Open a I/O of JSON data, respecting .gz file endings."""
+        if filename[-3:] == ".gz":
+            return gzip.open(filename, mode + "t", encoding="UTF-8")
+        else:
+            return codecs.open(filename, mode, encoding="UTF-8")
+
 
     def update_live_wallpapers(self, wallpapers):
         """Set actually visible wallpapers."""
@@ -888,6 +931,7 @@ class Core:
             self.assign_ui_listeners()
             self.screen_controller.update_live_screens()
             self.run_event_loop()
+            self.wallpaper_controller.store_config(args.config_file)
 
     def assign_ui_listeners(self):
         """Set up Ui interaction keypress listeners.
