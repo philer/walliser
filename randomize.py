@@ -131,6 +131,16 @@ def sign(x):
     return 1 if x > 0 else -1 if x < 0 else 0
 
 
+def dict_update_recursive(a, b):
+    """Recursiveley merge dictionaries. Mutates first argument.
+    """
+    for key in b:
+        if key in a and isinstance(a[key], dict) and isinstance(b[key], dict):
+            dict_update_recursive(a[key], b[key])
+        else:
+            a[key] = b[key]
+
+
 ### string formatting helpers ###
 
 def right_pad(length, string, character=" "):
@@ -722,7 +732,7 @@ class WallpaperController:
     def store_config(self, filename, config=dict(), pretty="auto"):
         """Save current configuration into given file."""
         config = config or self.load_config(filename)
-        config.update({
+        dict_update_recursive(config, {
             "wallpapers": {
                 wp.path: {"rating": wp.rating, "purity": wp.purity}
                 for wp in self.wallpapers
