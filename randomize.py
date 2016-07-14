@@ -660,7 +660,8 @@ class WallpaperController:
 
         if not self.wallpapers:
             raise Exception("No wallpapers found.")
-        self.store_config(args.config_file, config)
+        if args.config_file:
+            self.store_config(args.config_file, config)
 
         self.wallpaper_count = len(self.wallpapers)
         ui.update_wallpaper_count(self.wallpaper_count)
@@ -938,10 +939,13 @@ class Core:
             self.wallpaper_controller = WallpaperController(self.ui, args)
             self.screen_controller = ScreenController(self.ui,
                 self.wallpaper_controller)
+
             self.assign_ui_listeners()
             self.screen_controller.update_live_screens()
             self.run_event_loop()
-            self.wallpaper_controller.store_config(args.config_file)
+
+            if args.config_file:
+                self.wallpaper_controller.store_config(args.config_file)
 
     def assign_ui_listeners(self):
         """Set up Ui interaction keypress listeners.
