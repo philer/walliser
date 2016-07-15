@@ -459,8 +459,8 @@ class Core:
 
         keypress('w', scrctrl.inc_rating_on_selected)
         keypress('s', scrctrl.dec_rating_on_selected)
-        keypress('e', scrctrl.inc_purity_on_selected)
-        keypress('d', scrctrl.dec_purity_on_selected)
+        keypress('d', scrctrl.inc_purity_on_selected)
+        keypress('e', scrctrl.dec_purity_on_selected)
 
     def run_event_loop(self):
         """Start the event loop processing Ui events.
