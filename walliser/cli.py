@@ -41,6 +41,12 @@ def parse_args():
         dest="shuffle",
         action='store_false',
     )
+    parser.add_argument("-q", "--query",
+        help="Filter wallpapers by rating and purity",
+        dest="query",
+        type=str,
+        default=None,
+    )
     # TODO maybe parse arbitrary --query expressions rather than multiple switches
     # parser.add_argument("-r", "--min-rating",
     #     help="Filter wallpapers by minimum rating",

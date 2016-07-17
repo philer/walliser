@@ -1,5 +1,6 @@
 # Project specific
 *.json
+*.json.gz
 randomize.sh
 
 # Python
@@ -13,3 +14,7 @@ __pycache__
 *~
 *.swp
 *.sublime-*
+
+# Misc.
+*.old
+*.backup

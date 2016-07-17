@@ -90,7 +90,14 @@ class modlist:
         self._len -= 1
 
 
-ImageData = namedtuple("ImageData", ["path", "width", "height", "format"])
+ImageData = namedtuple("ImageData", [
+    "path",
+    "width",
+    "height",
+    "format",
+    "rating",
+    "purity",
+])
 
 
 class WallpaperController:
@@ -102,27 +109,63 @@ class WallpaperController:
     def __init__(self, ui, args):
         self.args = args
 
-        config = {"wallpapers": dict()}
+        data = dict()
         if args.config_file:
-            config = self.load_config(args.config_file, config)
+            config = self.load_config(args.config_file, {"wallpapers":[]})
+            data = config["wallpapers"]
 
+        paths = []
         if args.wallpaper_sources:
-            images = self.image_data(self.find_images(args.wallpaper_sources))
-            self.wallpapers = [
-                Wallpaper(imgdata, **config["wallpapers"].get(
-                    imgdata.path, {"rating": 0, "purity": 0}))
-                for imgdata in images
-            ]
-        else:
-            # images = self.image_data(config["wallpapers"].keys())
-            self.wallpapers = [
-                Wallpaper(self.image_data(path), **info)
-                for path, info in config["wallpapers"]
-            ]
+            paths = self.find_images(args.wallpaper_sources)
 
+        query = None
+        allow_defaults = True
+        if args.query:
+            query = eval(
+                "lambda r,p: " + args.query,
+                {"__builtins__": {"min", min, "max", max}},
+                dict(),
+            )
+            allow_defaults = query(0, 0)
+            def query_test(data):
+                return query(data.rating, data.purity)
+
+        args_data = []
+        # Try to optimize the expensive filtering as much as possible.
+        if data and paths:
+            if query:
+                if allow_defaults:
+                    # all paths with data that matches
+                    args_data = filter(query_test,
+                        self.image_data(paths, data))
+                else:
+                    # all paths from data that were requested and match
+                    args_data = (ImageData(path=path, **args)
+                        for path, args in data.items())
+                    paths = set(paths)
+                    args_data = (args for args in args_data
+                        if query_test(args) and args.path in paths)
+            else:
+                # all paths with data
+                args_data = self.image_data(paths, data)
+
+
+        elif data and not paths:
+            # all paths from data (that match)
+            args_data = (ImageData(path=path, **args)
+                for path, args in data.items())
+            if query:
+                args_data = filter(query_test, args_data)
+
+        elif not data and paths and allow_defaults:
+            # all paths with data
+            args_data = self.image_data(paths)
+
+        self.wallpapers = [Wallpaper(*args) for args in args_data]
         if not self.wallpapers:
             raise Exception("No wallpapers found.")
-        if args.config_file:
+
+        if args.wallpaper_sources and args.config_file:
             self.store_config(args.config_file, config)
 
         self.wallpaper_count = len(self.wallpapers)
@@ -152,24 +195,31 @@ class WallpaperController:
             for f in files:
                 yield os.path.realpath(os.path.join(directory, f))
 
-    def image_data(self, path):
+    def image_data(self, path, known_data=dict()):
         """Retrieve image information by checking real file (headers).
         This works for single paths (string -> ImageData)
         and for iterables (iterable<string> -> iterable<ImageData>).
         """
         if not isinstance(path, str):
-            return filter(None, map(self.image_data, path))
+            # return filter(None, map(self.image_data, path, known_data))
+            return filter(None, (self.image_data(p, known_data) for p in path))
+
         try:
-            img = Image.open(path)
-        except IOError:
-            return None
-        else:
-            return ImageData(
-                path=path,
-                width=img.size[0],
-                height=img.size[1],
-                format=img.format,
-            )
+            return ImageData(path=path, **known_data[path])
+        except KeyError:
+            try:
+                img = Image.open(path)
+            except IOError:
+                return None
+            else:
+                return ImageData(
+                    path=path,
+                    width=img.size[0],
+                    height=img.size[1],
+                    format=img.format,
+                    rating=0,
+                    purity=0,
+                )
 
     # def is_image_file(self, path):
     #     """Rudimentary check for know filename extensions, no magic."""
@@ -196,10 +246,7 @@ class WallpaperController:
         """Save current configuration into given file."""
         config = config or self.load_config(filename)
         dict_update_recursive(config, {
-            "wallpapers": {
-                wp.path: {"rating": wp.rating, "purity": wp.purity}
-                for wp in self.wallpapers
-            }
+            "wallpapers": {wp.path: wp.as_dict for wp in self.wallpapers}
         })
         with self.open_config_file(self.args.config_file, "w") as config_file:
             if pretty == True or pretty == "auto" and filename[-3:] != ".gz":

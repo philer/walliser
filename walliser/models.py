@@ -40,12 +40,16 @@ class Wallpaper(Observable):
 
     @property
     def as_dict(self):
+        """Dictionary representation of this object for storing.
+        Excludes path so it can be used as key.
+        """
         return {
-            "path": self.path,
+            # "path": self.path,
+            "width": self.width,
+            "height": self.height,
+            "format": self.format,
             "rating": self.rating,
             "purity": self.purity,
-            "size": self.size,
-            "format": self.format,
         }
 
     @property
@@ -70,11 +74,15 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
-    def __init__(self, filedata, rating=0, purity=0):
+    def __init__(self, path, width, height, format, rating, purity):
         Observable.__init__(self)
-        (self.path, self.width, self.height, self.format) = filedata
+        self.path = path
+        self.width = width
+        self.height = height
+        self.format = format
         self.rating = rating
         self.purity = purity
+        # (self.path, self.width, self.height, self.format) = filedata
 
     def __repr__(self):
         return self.path
