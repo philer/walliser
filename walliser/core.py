@@ -488,6 +488,15 @@ class Core:
                 self.reset_interval_timeout()
             return wrapper
 
+        def with_interval_delay(fn, delay=2):
+            """Some keypress listeners should ensure a short delay before
+            wallpaper rotation resumes."""
+            @wraps(fn)
+            def wrapper(*args):
+                fn(*args)
+                self.ensure_next_interval_delay(delay)
+            return wrapper
+
         scrctrl = self.screen_controller
 
         keypress(curses.KEY_RESIZE, scrctrl.update_ui)
@@ -506,10 +515,10 @@ class Core:
         keypress('→', with_interval_reset(scrctrl.next_on_selected))
         keypress('←', with_interval_reset(scrctrl.prev_on_selected))
 
-        keypress('w', scrctrl.inc_rating_on_selected)
-        keypress('s', scrctrl.dec_rating_on_selected)
-        keypress('d', scrctrl.inc_purity_on_selected)
-        keypress('e', scrctrl.dec_purity_on_selected)
+        keypress('w', with_interval_delay(scrctrl.inc_rating_on_selected))
+        keypress('s', with_interval_delay(scrctrl.dec_rating_on_selected))
+        keypress('d', with_interval_delay(scrctrl.inc_purity_on_selected))
+        keypress('e', with_interval_delay(scrctrl.dec_purity_on_selected))
 
     def run_event_loop(self):
         """Start the event loop processing Ui events.
@@ -531,6 +540,10 @@ class Core:
     def reset_interval_timeout(self):
         """Set the countdown for the next update back to full length."""
         self.next_update = time() + self.interval_delay
+
+    def ensure_next_interval_delay(self, seconds):
+        """Extend the current delay until the next update if necessary."""
+        self.next_update = max(self.next_update, time() + seconds)
 
     def interrupt(self, *_):
         self.interrupted = True
