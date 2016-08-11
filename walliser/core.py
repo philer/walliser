@@ -346,6 +346,7 @@ class ScreenController:
         self.update_live_screens()
 
     def next(self):
+        """Cycle forward in the global wallpaper rotation."""
         current = self.current_screen
         if current:
             current.current = False
@@ -355,6 +356,7 @@ class ScreenController:
             self.update_live_screens()
 
     def prev(self):
+        """Cycle backward in the global wallpaper rotation."""
         current = self.current_screen
         if current:
             current.prev_wallpaper()
@@ -401,6 +403,7 @@ class ScreenController:
         self._update_active_screens()
 
     def _update_active_screens(self):
+        """Regenerate the list of screens used in global wallpaper rotation."""
         if self.current_screen:
             self.current_screen.current = False
         active_screens = [s for s in self.screens if not s.paused]
