@@ -81,7 +81,7 @@ class Ui:
     SCREEN_WINDOW_MAX_HEIGHT = 2
 
     HEADER_TEMPLATE = ("Found {wallpaper_count:d} wallpapers,"
-                       " updating every {interval_delay:.1f} seconds on"
+                       " updating every {interval_delay:.3} seconds on"
                        " {screen_count:d} screens"
                        " ({total_run_time:s} total)"
                     )

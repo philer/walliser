@@ -505,6 +505,9 @@ class Core:
         keypress('b', with_interval_reset(scrctrl.prev))
         keypress('x', with_interval_reset(scrctrl.cycle_screens))
 
+        keypress('+', self.reduce_interval_delay)
+        keypress('-', self.increase_interval_delay)
+
         keypress('tab', scrctrl.select_next)
         keypress('↓',   scrctrl.select_next)
         keypress('↑',   scrctrl.select_prev)
@@ -536,6 +539,18 @@ class Core:
             elif time() > self.next_update:
                 self.screen_controller.next()
                 self.reset_interval_timeout()
+
+    def increase_interval_delay(self):
+        """Reduce wallpaper rotation speed by a quarter second."""
+        # self.interval_delay *= 1.1
+        self.interval_delay += 0.25
+        self.ui.update_interval_delay(self.interval_delay)
+
+    def reduce_interval_delay(self):
+        """Increase wallpaper rotation speed by a quarter second."""
+        # self.interval_delay *= 1/1.1
+        self.interval_delay -= 0.25
+        self.ui.update_interval_delay(self.interval_delay)
 
     def reset_interval_timeout(self):
         """Set the countdown for the next update back to full length."""
