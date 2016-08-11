@@ -341,6 +341,7 @@ class ScreenController:
             screen.idx = (screen.idx + 1) % self.screen_count
         self.screens = self.screens[1:] + self.screens[0:1]
         self._update_active_screens()
+        self.select_prev()
         self.update_ui()
         self.update_live_screens()
 
