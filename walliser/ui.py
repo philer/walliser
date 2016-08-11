@@ -86,6 +86,16 @@ class Ui:
                        " ({total_run_time:s} total)"
                     )
 
+    KEYMAP = {
+        "↑":   curses.KEY_UP,
+        "→":   curses.KEY_RIGHT,
+        "↓":   curses.KEY_DOWN,
+        "←":   curses.KEY_LEFT,
+        "tab": ord('\t'),
+        "esc": 27,
+    }
+    KEYMAP_INVERTED = {v:k for k,v in KEYMAP.items()}
+
     def __init__(self):
         self.init_curses()
         self.key_listeners = dict()
@@ -172,6 +182,8 @@ class Ui:
             pass
 
     def on_keypress(self, key, callback):
+        if key in self.KEYMAP:
+            key = self.KEYMAP[key]
         if key in self.key_listeners:
             self.key_listeners[key].append(callback)
         else:

@@ -477,7 +477,7 @@ class Core:
 
         # keypress('q',                self.interrupt)
         # keypress('Q',                self.interrupt)
-        keypress(27,                 self.interrupt) # ESC
+        keypress('esc',              self.interrupt)
         signal.signal(signal.SIGINT, self.interrupt)
 
         def with_interval_reset(fn):
@@ -496,17 +496,15 @@ class Core:
         keypress('b', with_interval_reset(scrctrl.prev))
         keypress('x', with_interval_reset(scrctrl.cycle_screens))
 
-        keypress(ord('\t'),         scrctrl.select_next)
-        keypress(curses.KEY_DOWN,   scrctrl.select_next)
-        keypress(curses.KEY_UP,     scrctrl.select_prev)
-        keypress(' ',               scrctrl.pause_unpause_selected)
+        keypress('tab', scrctrl.select_next)
+        keypress('↓',   scrctrl.select_next)
+        keypress('↑',   scrctrl.select_prev)
+        keypress(' ',   scrctrl.pause_unpause_selected)
 
         keypress('a', with_interval_reset(scrctrl.next_on_selected))
         keypress('q', with_interval_reset(scrctrl.prev_on_selected))
-        keypress(curses.KEY_RIGHT,
-            with_interval_reset(scrctrl.next_on_selected))
-        keypress(curses.KEY_LEFT,
-            with_interval_reset(scrctrl.prev_on_selected))
+        keypress('→', with_interval_reset(scrctrl.next_on_selected))
+        keypress('←', with_interval_reset(scrctrl.prev_on_selected))
 
         keypress('w', scrctrl.inc_rating_on_selected)
         keypress('s', scrctrl.dec_rating_on_selected)
