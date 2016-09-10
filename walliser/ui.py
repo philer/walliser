@@ -4,7 +4,6 @@ import os
 import curses
 from datetime import timedelta
 
-
 def right_pad(length, string, character=" "):
     """Extends string to given length by adding padding characters if necessary.
     If string is longer than length it will be shortened to length.

@@ -47,31 +47,7 @@ def parse_args():
         type=str,
         default=None,
     )
-    # TODO maybe parse arbitrary --query expressions rather than multiple switches
-    # parser.add_argument("-r", "--min-rating",
-    #     help="Filter wallpapers by minimum rating",
-    #     dest="min_rating",
-    #     type=int,
-    #     default=0,
-    # )
-    # parser.add_argument("-R", "--max-rating",
-    #     help="Filter wallpapers by maximum rating",
-    #     dest="max_rating",
-    #     type=int,
-    #     default=None,
-    # )
-    # parser.add_argument("-p", "--min-purity",
-    #     help="Filter wallpapers by maximum rating",
-    #     dest="min_purity",
-    #     type=int,
-    #     default=None,
-    # )
-    # parser.add_argument("-P", "--max-purity",
-    #     help="Filter wallpapers by minimum rating",
-    #     dest="max_purity",
-    #     type=int,
-    #     default=0,
-    # )
+
     args = parser.parse_args()
     if not args.config_file and not args.wallpaper_sources:
         parser.print_usage()
