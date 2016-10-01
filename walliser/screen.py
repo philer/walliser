@@ -48,20 +48,26 @@ class Screen(Observable):
         self._selected = selected
         self._paused = paused
 
+        self.current_wallpaper.subscribe(self)
+
     def __repr__(self):
         return "screen:" + str(self.idx)
 
     @observed
     def cycle_wallpaper(self, offset):
-        old = self.current_wallpaper
+        self.current_wallpaper.unsubscribe(self)
         self._current_wallpaper_offset += offset
-        old.transfer_observers(self.current_wallpaper)
+        self.current_wallpaper.subscribe(self)
 
     def next_wallpaper(self):
         self.cycle_wallpaper(1)
 
     def prev_wallpaper(self):
         self.cycle_wallpaper(-1)
+
+    @observed
+    def notify(self, *_):
+        pass
 
 
 class ScreenController:
@@ -101,9 +107,7 @@ class ScreenController:
                 screen_count,
                 idx)
             screen = Screen(idx, wallpapers)
-            screen.subscribe(ui.update_screen)
-            screen.current_wallpaper.subscribe(ui.update_screen, screen)
-            screen.current_wallpaper.subscribe(wallpaper_controller.updated)
+            screen.subscribe(ui)
             ui.update_screen(screen)
             self.screens.append(screen)
 

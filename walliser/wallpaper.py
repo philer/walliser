@@ -93,7 +93,6 @@ class WallpaperController:
         except (TypeError, KeyError):
             config_data = {}
 
-        # set up the query for filtering wallpapers
         query = None
         if args.query:
             query = eval(
@@ -103,33 +102,15 @@ class WallpaperController:
             )
 
         if args.wallpaper_sources:
-            allow_defaults = query is None or query(0, 0)
-            for path in self.find_images(args.wallpaper_sources):
-                try:
-                    data = config_data[path]
-                except KeyError:
-                    if allow_defaults:
-                        data = self.image_data(path)
-                        if data:
-                            wp = Wallpaper(**data)
-                            self.wallpapers.append(wp)
-                            self.updated_wallpapers.add(wp)
-                else:
-                    if (query is None
-                        or query(data["rating"], data["purity"])
-                        ):
-                        self.wallpapers.append(Wallpaper(path, **data))
-        elif query:
-            self.wallpapers = [
-                Wallpaper(path, **data)
-                for path, data in config_data.items()
-                if query(data["rating"], data["purity"])
-            ]
+            wallpapers = self.wallpapers_from_paths(
+                            args.wallpaper_sources, config_data, query)
         else:
-            self.wallpapers = [
-                Wallpaper(path, **data)
-                for path, data in config_data.items()
-            ]
+            wallpapers = self.wallpapers_from_config(config_data, query)
+
+        self.wallpapers = []
+        for wp in wallpapers:
+            self.wallpapers.append(wp)
+            wp.subscribe(self)
 
         if not self.wallpapers:
             raise Exception("No wallpapers found.")
@@ -142,6 +123,33 @@ class WallpaperController:
         else:
             self.wallpapers.sort(key=attrgetter("path"))
 
+
+    def wallpapers_from_paths(self, sources, config_data={}, query=None):
+        """Iterator used when paths were specified."""
+        allow_defaults = query is None or query(0, 0)
+        for path in self.find_images(sources):
+            try:
+                data = config_data[path]
+            except KeyError:
+                if allow_defaults:
+                    data = self.image_data(path)
+                    if data:
+                        wp = Wallpaper(path, **data)
+                        self.updated_wallpapers.add(wp)
+                        yield wp
+            else:
+                if query is None or query(data["rating"], data["purity"]):
+                    yield Wallpaper(path, **data)
+
+    def wallpapers_from_config(self, config_data={}, query=None):
+        """Itertor used when no paths arguments were provided."""
+        if query is None:
+            for path, data in config_data.items():
+                yield Wallpaper(path, **data)
+        else:
+            for path, data in config_data.items():
+                if query(data["rating"], data["purity"]):
+                    yield Wallpaper(path, **data)
 
     @classmethod
     def find_images(cls, patterns):
@@ -177,7 +185,7 @@ class WallpaperController:
             return None
         else:
             return dict(
-                path=path,
+                # path=path,
                 width=img.size[0],
                 height=img.size[1],
                 format=img.format,
@@ -185,7 +193,8 @@ class WallpaperController:
                 purity=0,
             )
 
-    def updated(self, wallpaper):
+
+    def notify(self, wallpaper, *_):
         self.updated_wallpapers.add(wallpaper)
 
     def update_config(self, config):

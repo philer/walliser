@@ -13,6 +13,9 @@ from .screen import Screen, ScreenController
 from .ui import Ui
 
 
+stats = {"saved_wallpapers": 0}
+
+
 class Core:
     """Main entry point to the application, manages run loops."""
 
@@ -37,7 +40,10 @@ class Core:
             self.set_timeout(self.interval_delay, self.update_wallpapers)
             self.set_timeout(5, self.save_config)
             self.run_event_loop()
-            self.save_config()
+
+        self.save_config()
+        # if stats["saved_wallpapers"]:
+        #     print(str(stats["saved_wallpapers"]) + " wallpaper updates saved")
 
     def update_wallpapers(self):
         self.screen_controller.next()
@@ -46,9 +52,11 @@ class Core:
     def save_config(self):
         updated_entries = self.wallpaper_controller.update_config(self.config)
         if updated_entries and self.config.save():
-            self.ui.update_footer("{:d} entr{:s} saved".format(
+            stats["saved_wallpapers"] += updated_entries
+            print("{:d} entr{:s} saved ({:d} total)".format(
                 updated_entries,
-                "ies" if updated_entries > 1 else "y"
+                "ies" if updated_entries > 1 else "y",
+                stats["saved_wallpapers"]
             ))
 
     def increase_interval_delay(self):
@@ -176,3 +184,4 @@ class Core:
 
     def interrupt(self, *_):
         self.interrupted = True
+

@@ -50,39 +50,35 @@ class modlist:
         self._len -= 1
 
 
-def observed(method):
-    """Decorator to be added on methods that should notify observers
-    after they were executed."""
-    @wraps(method)
-    def wrapper(self, *args, **kwargs):
-        method(self, *args, **kwargs)
-        self._notify_observers()
-    return wrapper
-
-
 class Observable:
     """An observable object calls registered callbacks whenever one of its
     @observed methods (including @property setters) is called.
     """
 
     def __init__(self):
-        self._observers = {}
+        self._observers = set()
 
-    def transfer_observers(self, other):
-        other._observers.update(self._observers)
-        self._observers = {}
+    # def transfer_observers(self, other):
+    #     other._observers.update(self._observers)
+    #     self._observers = set()
 
-    def subscribe(self, callback, *args):
+    def subscribe(self, subscriber):
         """Add a subscriber to this object's observer list"""
-        self._observers[callback] = args
+        self._observers.add(subscriber)
 
-    def unsubscribe(self, callback):
+    def unsubscribe(self, subscriber):
         """Remove a subscriber from this object's observer list"""
-        del self._observers[callback]
+        self._observers.remove(subscriber)
 
-    def _notify_observers(self):
-        for observer, args in self._observers.items():
-            if args:
-                observer(*args)
-            else:
-                observer(self)
+    def _notify_observers(self, method_name, *args, **kwargs):
+        for observer in self._observers:
+            observer.notify(self, method_name, *args, **kwargs)
+
+def observed(method):
+    """Decorator to be added on methods that should notify observers
+    after they were executed."""
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        method(self, *args, **kwargs)
+        self._notify_observers(method.__name__, *args, **kwargs)
+    return wrapper

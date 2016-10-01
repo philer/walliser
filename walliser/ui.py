@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import curses
 from datetime import timedelta
+
+from .util import Observable, observed
+from .screen import Screen
 
 def right_pad(length, string, character=" "):
     """Extends string to given length by adding padding characters if necessary.
@@ -74,6 +78,17 @@ def purity_as_string(purity, length=5):
         negative="♥", negative_bg="♡", positive="~", positive_bg="♡")
 
 
+class StdOutWrapper(Observable):
+
+    def __init__(self):
+        super(StdOutWrapper, self).__init__()
+        self.text = ""
+
+    @observed
+    def write(self, txt):
+        self.text += txt
+
+
 class Ui:
     """Curses-based text interface for WallpaperSetter"""
 
@@ -108,12 +123,18 @@ class Ui:
         # self.update_header(screen_count, wallpaper_count, interval_delay)
 
     def __enter__(self):
+        self.stdout_wrapper = StdOutWrapper()
+        self.stdout_wrapper.subscribe(self)
         self.init_curses()
+        sys.stdout = self.stdout_wrapper
         self.layout()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.exit_curses()
+        sys.stdout = sys.__stdout__
+        sys.stdout.write(self.stdout_wrapper.text)
+
 
     def init_curses(self):
         """Set up curses interface. (compare curses.wrapper)"""
@@ -224,6 +245,14 @@ class Ui:
                     width - 2*body_padding,
                     idx * self.screen_window_height + body_padding,
                     body_padding))
+
+    def notify(self, obj, method, *args):
+        if isinstance(obj, Screen):
+            self.update_screen(obj)
+        elif isinstance(obj, StdOutWrapper) and method == "write":
+            string = args[0].strip()
+            if string:
+                self.update_footer(string)
 
     def update_screen_count(self, screen_count):
         self.screen_count = screen_count
