@@ -96,7 +96,6 @@ class Ui:
     KEYMAP_INVERTED = {v:k for k,v in KEYMAP.items()}
 
     def __init__(self):
-        self.init_curses()
         self.key_listeners = dict()
 
         self.header_string = ""
@@ -106,10 +105,11 @@ class Ui:
         # self.screen_window_height = 0
         self.wallpaper_count = 0
         self.interval_delay = 0
-        self.layout()
         # self.update_header(screen_count, wallpaper_count, interval_delay)
 
     def __enter__(self):
+        self.init_curses()
+        self.layout()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -302,9 +302,9 @@ class Ui:
             idx=screen.idx + 1,
             selected="»" if screen.selected else " ",
             current_or_paused="*" if screen.current else
-                              "·" if screen.paused else " ",
-            rating=rating_as_string(screen.current_wallpaper.rating, 3),
-            purity=purity_as_string(screen.current_wallpaper.purity, 3),
+                              "P" if screen.paused else " ",
+            rating=rating_as_string(screen.current_wallpaper.rating, 2),
+            purity=purity_as_string(screen.current_wallpaper.purity, 2),
             url=screen.current_wallpaper.url,
         )
 

@@ -66,7 +66,11 @@ class Observable:
     """
 
     def __init__(self):
-        self._observers = dict()
+        self._observers = {}
+
+    def transfer_observers(self, other):
+        other._observers.update(self._observers)
+        self._observers = {}
 
     def subscribe(self, callback, *args):
         """Add a subscriber to this object's observer list"""
@@ -78,4 +82,7 @@ class Observable:
 
     def _notify_observers(self):
         for observer, args in self._observers.items():
-            observer(*args)
+            if args:
+                observer(*args)
+            else:
+                observer(self)

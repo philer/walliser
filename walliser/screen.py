@@ -38,9 +38,9 @@ class Screen(Observable):
     def paused(self, paused):
         self._paused = paused
 
-    def __init__(self, ui, idx, wallpapers,
+    def __init__(self, idx, wallpapers,
             current=False, selected=False, paused=False):
-        self.ui = ui
+        Observable.__init__(self)
         self.idx = idx
         self.wallpapers = wallpapers
         self._current_wallpaper_offset = 0
@@ -48,19 +48,14 @@ class Screen(Observable):
         self._selected = selected
         self._paused = paused
 
-        Observable.__init__(self)
-        self.subscribe(ui.update_screen, self)
-        self.current_wallpaper.subscribe(ui.update_screen, self)
-        ui.update_screen(self)
-
     def __repr__(self):
         return "screen:" + str(self.idx)
 
     @observed
     def cycle_wallpaper(self, offset):
-        self.current_wallpaper.unsubscribe(self.ui.update_screen)
+        old = self.current_wallpaper
         self._current_wallpaper_offset += offset
-        self.current_wallpaper.subscribe(self.ui.update_screen, self)
+        old.transfer_observers(self.current_wallpaper)
 
     def next_wallpaper(self):
         self.cycle_wallpaper(1)
@@ -105,24 +100,27 @@ class ScreenController:
                 self.wallpaper_controller.wallpapers,
                 screen_count,
                 idx)
-            self.screens.append(Screen(self.ui, idx, wallpapers))
+            screen = Screen(idx, wallpapers)
+            screen.subscribe(ui.update_screen)
+            screen.current_wallpaper.subscribe(ui.update_screen, screen)
+            screen.current_wallpaper.subscribe(wallpaper_controller.updated)
+            ui.update_screen(screen)
+            self.screens.append(screen)
 
         self.active_screens = modlist(self.screens[:])
         self._current_screen_offset = 0
         self.current_screen.current = True
         self._selected_screen = self.screens[0]
         self._selected_screen.selected = True
-        # self.update_live_screens()
-        # self.run()
 
     def _get_screen_count(self):
         """Finds out the number of connected screens."""
         # this is kind of a hack...
         return (
             subprocess
-            .check_output(["xrandr", "-q"])
-            .decode("ascii")
-            .count(" connected ")
+                .check_output(["xrandr", "-q"])
+                .decode("ascii")
+                .count(" connected ")
         )
 
     def update_ui(self, *_):
@@ -210,10 +208,8 @@ class ScreenController:
         if active_screens:
             self.active_screens = modlist(active_screens)
             self.current_screen.current = True
-            # self.update_interval.start() # TODO remove
         else:
             self.active_screens = []
-            # self.update_interval.stop() # TODO remove
 
     def next_on_selected(self):
         """Update selected (or current) screen to the next wallpaper."""

@@ -45,7 +45,7 @@ def parse_args():
         help="Filter wallpapers by rating and purity",
         dest="query",
         type=str,
-        default=None,
+        default="r >= 0",
     )
 
     args = parser.parse_args()
