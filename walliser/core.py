@@ -53,11 +53,11 @@ class Core:
         updated_entries = self.wallpaper_controller.update_config(self.config)
         if updated_entries and self.config.save():
             stats["saved_wallpapers"] += updated_entries
-            print("{:d} entr{:s} saved ({:d} total)".format(
-                updated_entries,
-                "ies" if updated_entries > 1 else "y",
-                stats["saved_wallpapers"]
-            ))
+        print("{:d} entr{:s} saved ({:d} total)".format(
+            updated_entries,
+            "y" if updated_entries == 1 else "ies",
+            stats["saved_wallpapers"]
+        ))
 
     def increase_interval_delay(self):
         """Reduce wallpaper rotation speed by a quarter second."""
@@ -89,6 +89,7 @@ class Core:
         # keypress('q',                self.interrupt)
         # keypress('Q',                self.interrupt)
         keypress('esc',              self.interrupt)
+        keypress('^Q',              self.interrupt)
         signal.signal(signal.SIGINT, self.interrupt)
 
         def with_interval_reset(fn):
@@ -115,6 +116,12 @@ class Core:
                 fn(*args)
                 self.set_timeout(delay, self.save_config)
             return wrapper
+
+        def save_now():
+            del self.timeout_callbacks[self.save_config]
+            self.save_config()
+
+        keypress('^S', save_now)
 
         scrctrl = self.screen_controller
 

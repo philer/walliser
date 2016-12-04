@@ -88,17 +88,20 @@ class StdOutWrapper(Observable):
     def write(self, txt):
         self.text += txt
 
+    def flush(self):
+        pass
+
 
 class Ui:
     """Curses-based text interface for WallpaperSetter"""
 
     SCREEN_WINDOW_MAX_HEIGHT = 2
 
-    HEADER_TEMPLATE = ("Found {wallpaper_count:d} wallpapers,"
-                       " updating every {interval_delay:.3} seconds on"
-                       " {screen_count:d} screens"
-                       " ({total_run_time:s} total)"
-                    )
+    # HEADER_TEMPLATE = ("Found {wallpaper_count:d} wallpapers,"
+    #                    " updating every {interval_delay:.3} seconds on"
+    #                    " {screen_count:d} screens"
+    #                    " ({total_run_time:s} total)"
+    #                 )
 
     KEYMAP = {
         "↑":   curses.KEY_UP,
@@ -115,6 +118,7 @@ class Ui:
 
         self.header_string = ""
         self.footer_string = ""
+        self.info_string = ""
         self.screen_count = 0
         self.screen_strings = []
         # self.screen_window_height = 0
@@ -143,14 +147,8 @@ class Ui:
 
         self.root_win = curses.initscr()
 
-        # Turn off echoing of keys, and enter cbreak mode,
-        # where no buffering is performed on keyboard input
         curses.noecho()
-        curses.cbreak()
-
-        # In keypad mode, escape sequences for special keys
-        # (like the cursor keys) will be interpreted and
-        # a special value like curses.KEY_LEFT will be returned
+        curses.raw()
         self.root_win.keypad(1)
 
         # # Start color, too.  Harmless if the terminal doesn't have
@@ -161,7 +159,6 @@ class Ui:
         #     start_color()
         # except:
         #     pass
-
         # curses.use_default_colors()
 
         # hide cursor
@@ -174,8 +171,9 @@ class Ui:
     def exit_curses(self):
         """Restores terminal to its normal state. (compare curses.wrapper)"""
         self.root_win.keypad(0)
-        curses.echo()
         curses.nocbreak()
+        curses.noraw()
+        curses.echo()
         curses.endwin()
 
 
@@ -184,11 +182,10 @@ class Ui:
         # if char == curses.ERR:
         #     return False
         key = curses.keyname(char).decode("utf-8")
-        self.update_footer("pressed key '{:s}' ({:d})".format(key, char))
+        # self.info("pressed key '{:s}' ({:d})".format(key, char))
         if char == curses.KEY_RESIZE:
             self.layout()
             self.refresh_header()
-            self.refresh_footer()
             # Not responsible for body content here, done via listener
         try:
             for listener in self.key_listeners[char]:
@@ -219,32 +216,29 @@ class Ui:
         (height, width) = self.root_win.getmaxyx()
         self.width = width # used by updates
 
-        header_height = 1
-        footer_height = 1
-        body_height = height - header_height - footer_height
+        if height > 2:
+            header_height = 2
+            self.header = self.root_win.subwin(header_height, width, 0, 0)
+            self.update_header()
+        else:
+            header_height = 0
 
-        # subwin/derwin args: [height, width,] top_y, left_x
-        self.header = self.root_win.subwin(header_height, width, 0, 0)
-        self.body = self.root_win.subwin(body_height, width, header_height, 0)
-        self.footer = self.root_win.subwin(footer_height, width, height - 1, 0)
-
-        body_padding = 1
-        self.body.border()
+        body_height = height - header_height
+        body = self.root_win.subwin(body_height, width, header_height, 0)
 
         self.screen_windows = []
-        try:
+        if self.screen_count:
             self.screen_window_height = min(
-                (body_height - 2*body_padding) // self.screen_count,
-                Ui.SCREEN_WINDOW_MAX_HEIGHT)
-        except ZeroDivisionError:
-            pass
-        else:
+                body_height // self.screen_count,
+                Ui.SCREEN_WINDOW_MAX_HEIGHT
+            )
             for idx in range(self.screen_count):
-                self.screen_windows.append(self.body.derwin(
+                self.screen_windows.append(body.derwin(
                     self.screen_window_height,
-                    width - 2*body_padding,
-                    idx * self.screen_window_height + body_padding,
-                    body_padding))
+                    width,
+                    idx * self.screen_window_height,
+                    0
+                ))
 
     def notify(self, obj, method, *args):
         if isinstance(obj, Screen):
@@ -252,14 +246,13 @@ class Ui:
         elif isinstance(obj, StdOutWrapper) and method == "write":
             string = args[0].strip()
             if string:
-                self.update_footer(string)
+                self.info(string)
 
     def update_screen_count(self, screen_count):
         self.screen_count = screen_count
         self.screen_strings = [""] * screen_count
         self.layout()
         self.update_header()
-        self.refresh_footer()
 
     def update_wallpaper_count(self, wallpaper_count):
         self.wallpaper_count = wallpaper_count
@@ -269,20 +262,33 @@ class Ui:
         self.interval_delay = interval_delay
         self.update_header()
 
+    def info(self, message):
+        """Set an information message visible to the user."""
+        self.info_string = message
+        self.update_header()
+
     def update_header(self):
-        try:
-            run_time = (
-                self.wallpaper_count * self.interval_delay / self.screen_count)
-        except ZeroDivisionError:
-            pass
-        else:
-            self.header_string = Ui.HEADER_TEMPLATE.format(
+        if not self.screen_count:
+            return
+        run_time = (
+            self.wallpaper_count * self.interval_delay / self.screen_count)
+
+        text = (
+                "{wallpaper_count:d} wallpapers | "
+                "{screen_count:d} screens | "
+                "{interval_delay:.3}s "
+                "({run_time}) "
+            ).format(
                 wallpaper_count=self.wallpaper_count,
                 interval_delay=self.interval_delay,
                 screen_count=self.screen_count,
-                total_run_time=str(timedelta(seconds=int(run_time))),
+                run_time=str(timedelta(seconds=int(run_time))),
             )
-            self.refresh_header()
+        text += (" " * (self.width - len(text) - len(self.info_string))
+               + self.info_string
+               + "\n" + ("─" * self.width))
+        self.header_string = text
+        self.refresh_header()
 
     def update_screen(self, screen):
         self.screen_strings[screen.idx] = self.screen_to_string(screen,
@@ -296,10 +302,6 @@ class Ui:
 
         self.refresh_screen(screen.idx)
 
-    def update_footer(self, string):
-        self.footer_string = string
-        self.refresh_footer()
-
     def refresh_header(self):
         self._set_window_content(self.header, self.header_string)
 
@@ -309,13 +311,10 @@ class Ui:
             self.screen_strings[idx])
         # win.chgat(0, 0, curses.A_REVERSE | curses.A_BOLD)
 
-    def refresh_footer(self):
-        self._set_window_content(self.footer, self.footer_string)
-
     def _set_window_content(self, win, string):
         (height, width) = win.getmaxyx()
         win.erase()
-        win.addstr(crop(height, width - 1, string))
+        win.insstr(crop(height, width, string))
         win.refresh()
 
     def screen_to_string(self, screen, compact=0):
