@@ -50,12 +50,18 @@ class Core:
         self.set_timeout(self.interval_delay, self.update_wallpapers)
 
     def save_config(self):
-        updated_entries = self.wallpaper_controller.update_config(self.config)
-        if updated_entries and self.config.save():
-            stats["saved_wallpapers"] += updated_entries
+        updates_count = self.wallpaper_controller.update_config(self.config)
+        self.config.update({
+            "restore": [
+                repr(wp) for wp in self.screen_controller.current_wallpapers
+            ],
+        })
+        self.config.save()
+
+        stats["saved_wallpapers"] += updates_count
         print("{:d} entr{:s} saved ({:d} total)".format(
-            updated_entries,
-            "y" if updated_entries == 1 else "ies",
+            updates_count,
+            "y" if updates_count == 1 else "ies",
             stats["saved_wallpapers"]
         ))
 

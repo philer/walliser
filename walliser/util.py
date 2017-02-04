@@ -117,7 +117,7 @@ def die(message="Exiting…"):
     sys.exit(1)
 
 def error(message):
-    print("\n" + ANSI_RED + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
+    print(ANSI_RED + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
 
 def warning(message):
     print(ANSI_YELLOW + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE)

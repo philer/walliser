@@ -80,6 +80,10 @@ class ScreenController:
             return self.active_screens[self._current_screen_offset]
 
     @property
+    def current_wallpapers(self):
+        return [scr.current_wallpaper for scr in self.screens]
+
+    @property
     def selected_screen(self):
         """Return selected screen. If none is selected select current_screen."""
         return self._selected_screen
@@ -133,9 +137,7 @@ class ScreenController:
 
     def update_live_screens(self):
         """Get each screen's current wallpaper and put them on the monitors."""
-        self.wallpaper_controller.update_live_wallpapers(
-            scr.current_wallpaper for scr in self.screens
-        )
+        self.wallpaper_controller.update_live_wallpapers(self.current_wallpapers)
 
     def cycle_screens(self):
         """Shift entire screens array by one position."""

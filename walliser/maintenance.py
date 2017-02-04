@@ -6,10 +6,9 @@ from .util import get_file_hash, info, warning, error, die, progress_bar
 from .config import Config
 
 
-def find_duplicates(args):
+def find_duplicates(config):
     """Check for file duplicates in config"""
 
-    config = Config(args.config_file)
     wallpapers = config["wallpapers"]
     updated_wallpapers = set()
     hashes = dict()

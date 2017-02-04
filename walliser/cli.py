@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from .core import Core
 from argparse import ArgumentParser
+
+from .core import Core
+from .config import Config
+from .wallpaper import set_wallpapers
+from .maintenance import find_duplicates
+from .util import error, die
 
 def main():
     """Parse command line arguments recognized by this module."""
@@ -48,6 +53,10 @@ def main():
         default="r >= 0",
     )
 
+    parser.add_argument("--restore",
+        help="Restore last wallpaper setting and exit.",
+        action='store_true'
+    )
     parser.add_argument("--maintenance",
         help="Perform maintenance (e.g. config file update)",
         action='store_true'
@@ -55,13 +64,19 @@ def main():
 
     args = parser.parse_args()
 
-    if args.maintenance:
-        from .maintenance import find_duplicates
-        find_duplicates(args)
+    if args.restore:
+        if not args.config_file:
+            parser.print_help()
+            die("Error: Need config file.")
+        set_wallpapers(*Config(args.config_file)["restore"])
+    elif args.maintenance:
+        if not args.config_file:
+            parser.print_help()
+            die("Error: Need config file.")
+        find_duplicates(Config(args.config_file))
     elif not args.config_file and not args.wallpaper_sources:
-        parser.print_usage()
-        import sys
-        sys.exit(1)
+        parser.print_help()
+        die("Error: Need wallpapers.")
     else:
         Core(args)
 
