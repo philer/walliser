@@ -10,6 +10,8 @@ from .util import dict_update_recursive
 class Config:
 
     def __init__(self, filename):
+        if not filename or not os.path.isfile(filename):
+            raise FileNotFoundError("Config file '" + str(filename) + "' doesn't exist.")
         self._filename = filename
         self._unsaved = {}
 
@@ -28,16 +30,16 @@ class Config:
 
     def load(self):
         """Return config as nested dict directly from file"""
-        if self._filename:
-            try:
-                with self.open_config_file(self._filename, "rt") as config_file:
-                    return json.load(config_file)
-            except FileNotFoundError:
-                pass
-            except ValueError: # bad json
-                # only raise if the file was not empty (really "malformed")
-                if os.stat(self._filename).st_size != 0:
-                    raise
+        # if self._filename:
+        try:
+            with self.open_config_file(self._filename, "rt") as config_file:
+                return json.load(config_file)
+        # except FileNotFoundError:
+        #     pass
+        except ValueError: # bad json
+            # only raise if the file was not empty (really "malformed")
+            if os.stat(self._filename).st_size != 0:
+                raise
         return {}
 
     def update(self, data):

@@ -4,7 +4,7 @@
 from .core import Core
 from argparse import ArgumentParser
 
-def parse_args():
+def main():
     """Parse command line arguments recognized by this module."""
     parser = ArgumentParser("walliser",
         description="Update desktop background periodically",
@@ -48,15 +48,22 @@ def parse_args():
         default="r >= 0",
     )
 
+    parser.add_argument("--maintenance",
+        help="Perform maintenance (e.g. config file update)",
+        action='store_true'
+    )
+
     args = parser.parse_args()
-    if not args.config_file and not args.wallpaper_sources:
+
+    if args.maintenance:
+        from .maintenance import find_duplicates
+        find_duplicates(args)
+    elif not args.config_file and not args.wallpaper_sources:
         parser.print_usage()
         import sys
         sys.exit(1)
-    return args
-
-def main():
-    Core(parse_args())
+    else:
+        Core(args)
 
 if __name__ == "__main__":
     main()

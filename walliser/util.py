@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
 
+import sys
+
+import hashlib
+
+from time import time
+
 from functools import wraps
 
 
@@ -82,3 +88,90 @@ def observed(method):
         method(self, *args, **kwargs)
         self._notify_observers(method.__name__, *args, **kwargs)
     return wrapper
+
+
+
+def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):
+    hasher = hashlib.new(algorithm)
+    with open(path, 'rb') as f:
+        buffer = f.read(blocksize)
+        while len(buffer) > 0:
+            hasher.update(buffer)
+            buffer = f.read(blocksize)
+    return hasher.hexdigest()
+    # return base64.b64encode(hasher.digest()).decode("utf-8")
+
+### CLI helpers ###
+
+# ANSI escape sequences used to style and control output on the terminal (TTY)
+ANSI_RED         = "\033[1;31m"
+ANSI_YELLOW      = "\033[3;33m"
+ANSI_NO_STYLE    = "\033[0m"
+ANSI_CLEAR_LINE  = "\033[K"
+# ANSI_CURSOR_UP   = "\033[A"
+ANSI_HIDE_CURSOR = "\033[?25l"
+ANSI_SHOW_CURSOR = "\033[?25h"
+
+def die(message="Exiting…"):
+    error(message)
+    sys.exit(1)
+
+def error(message):
+    print("\n" + ANSI_RED + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
+
+def warning(message):
+    print(ANSI_YELLOW + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE)
+
+def info(message):
+    print(message + ANSI_CLEAR_LINE)
+
+
+
+def progress_bar(total=100,
+                 prefix="", fill="█", sep="", background="░", suffix="",
+                 *, output=sys.stderr, width=80, interval=0.066):
+    """Create a CLI progress bar. Returns a callback for updating it."""
+    counter = " / " + str(total)
+    width -= len(prefix + sep + suffix + " " + str(total) + counter)
+
+    lastrun = time()
+    state = 0
+
+    def update(progress=None, after=""):
+        nonlocal state
+        if progress is None:
+            progress = state + 1
+        state = progress
+
+        if progress >= total:
+            output.write(ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
+            output.flush()
+            return
+
+        now = time()
+        nonlocal lastrun
+        if lastrun + interval > now:
+            return
+
+        fill_width = int(progress * width / total)
+        text = (
+              prefix
+            + fill * fill_width
+            + sep
+            + background * (width - fill_width)
+            + suffix
+            + " " + str(progress) + counter
+            + ANSI_CLEAR_LINE
+        )
+        if after:
+            text += "\n" + after + ANSI_CLEAR_LINE
+
+        # ANSI nF: put curser at the beginning of n lines up
+        text += "\033[" + str(text.count("\n")) + "F" + ANSI_HIDE_CURSOR
+
+        output.write(text)
+        output.flush()
+
+        lastrun = now
+        return update
+    return update

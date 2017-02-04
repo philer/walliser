@@ -12,7 +12,7 @@ from PIL import Image
 
 from glob import iglob as glob
 
-from .util import Observable, observed
+from .util import Observable, observed, get_file_hash
 
 
 def set_wallpapers(*wallpaper_paths):
@@ -33,6 +33,7 @@ class Wallpaper(Observable):
             "width": self.width,
             "height": self.height,
             "format": self.format,
+            "hash": self.hash,
             "rating": self.rating,
             "purity": self.purity,
         }
@@ -59,12 +60,13 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
-    def __init__(self, path, width, height, format, rating, purity):
+    def __init__(self, path, width, height, format, hash, rating, purity):
         Observable.__init__(self)
         self.path = path
         self.width = width
         self.height = height
         self.format = format
+        self.hash = hash
         self.rating = rating
         self.purity = purity
 
@@ -72,10 +74,12 @@ class Wallpaper(Observable):
         return self.path
 
     def __eq__(self, other):
-        return self.path == other.path
+        return self.hash == other.hash
+        # return self.path == other.path
 
     def __hash__(self):
-        return hash(Wallpaper) ^ hash(self.path)
+        # return hash(Wallpaper) ^ hash(self.path)
+        return int(self.hash, 16)
 
 
 class WallpaperController:
@@ -189,6 +193,7 @@ class WallpaperController:
                 width=img.size[0],
                 height=img.size[1],
                 format=img.format,
+                hash=get_file_hash(path), # TODO
                 rating=0,
                 purity=0,
             )
