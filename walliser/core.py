@@ -23,7 +23,7 @@ class Core:
         self.interval_delay = args.interval_delay
         self.timeout_callbacks = {}
 
-        self.config = Config(args.config_file)
+        self.config = Config(args.config_file, args.readonly)
 
         self.ui = Ui()
         self.ui.update_interval_delay(args.interval_delay)
@@ -51,11 +51,9 @@ class Core:
 
     def save_config(self):
         updates_count = self.wallpaper_controller.update_config(self.config)
-        self.config.update({
-            "restore": [
-                repr(wp) for wp in self.screen_controller.current_wallpapers
-            ],
-        })
+        self.config["restore"] = [
+            repr(wp) for wp in self.screen_controller.current_wallpapers
+        ]
         self.config.save()
 
         stats["saved_wallpapers"] += updates_count

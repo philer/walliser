@@ -19,16 +19,6 @@ def each(function, *iterators):
     exhaust(map(function, *iterators))
 
 
-def dict_update_recursive(a, b):
-    """Recursiveley merge dictionaries. Mutates first argument.
-    """
-    for key in b:
-        if key in a and isinstance(a[key], dict) and isinstance(b[key], dict):
-            dict_update_recursive(a[key], b[key])
-        else:
-            a[key] = b[key]
-
-
 class modlist:
     """Like a list but keys cycle indefinitely over a sublist."""
 

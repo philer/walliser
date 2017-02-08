@@ -1,74 +1,58 @@
 # -*- coding: utf-8 -*-
 
 import os
-
 import gzip
 import json
 
-from .util import dict_update_recursive
+def dict_update_recursive(a, b):
+    """Recursiveley merge dictionaries. Mutates first argument."""
+    for key in b:
+        if key in a and isinstance(a[key], dict) and isinstance(b[key], dict):
+            dict_update_recursive(a[key], b[key])
+        else:
+            a[key] = b[key]
 
-class Config:
+def open_config_file(filename, mode="r"):
+    """Open a I/O of JSON data, respecting .gz file endings."""
+    if filename[-3:] == ".gz":
+        return gzip.open(filename, mode, encoding="UTF-8")
+    else:
+        return open(filename, mode, encoding="UTF-8")
 
-    def __init__(self, filename):
-        if not filename or not os.path.isfile(filename):
-            raise FileNotFoundError("Config file '" + str(filename) + "' doesn't exist.")
-        self._filename = filename
-        self._unsaved = {}
 
-    def __getitem__(self, key):
-        """Return config as nested dict including unsaved changes.
-        Optional key allows accessing nested properties like
-            "key.subkey.subsubkey"
-        """
-        config = self.load()
-        if self._unsaved:
-            config = dict_update_recursive(config, self._unsaved)
-        if key:
-            for subkey in key.split("."):
-                config = config[subkey]
-        return config
+class Config(dict):
+    """A dictionary that can read and write itself to a JSON file"""
 
-    def load(self):
-        """Return config as nested dict directly from file"""
-        # if self._filename:
+    def __init__(self, filename, readonly=False):
+        self.filename = filename
+        self.readonly = readonly
+        data = {}
         try:
-            with self.open_config_file(self._filename, "rt") as config_file:
-                return json.load(config_file)
-        # except FileNotFoundError:
-        #     pass
+            with open_config_file(filename, "rt") as config_file:
+                data = json.load(config_file)
+        except FileNotFoundError:
+            pass
         except ValueError: # bad json
-            # only raise if the file was not empty (really "malformed")
-            if os.stat(self._filename).st_size != 0:
+            # only raise if the file was not empty (i.e. actually malformed)
+            if os.stat(self.filename).st_size != 0:
                 raise
-        return {}
+        if data:
+            super().__init__(**data)
 
-    def update(self, data):
-        dict_update_recursive(self._unsaved, data)
+    def rec_update(self, data):
+        """update recursively (only dicts, no other collection types)"""
+        dict_update_recursive(self, data)
 
     def save(self, pretty="auto"):
         """Save current configuration into given file."""
-        if not self._unsaved or not self._filename:
-            return False
-
-        config = self.load()
-        dict_update_recursive(config, self._unsaved)
-
-        with self.open_config_file(self._filename, "wt") as config_file:
+        if self.readonly:
+            return
+        with open_config_file(self.filename, "wt") as config_file:
 
             if pretty == True or (
-                    pretty == "auto" and self._filename[-3:] != ".gz"):
-                json.dump(config, config_file,
+                    pretty == "auto" and self.filename[-3:] != ".gz"):
+                json.dump(self, config_file,
                     sort_keys=True, indent="\t")
             else:
-                json.dump(config, config_file,
+                json.dump(self, config_file,
                     sort_keys=False, separators=(",", ":"))
-
-        return True
-
-    @staticmethod
-    def open_config_file(filename, mode="r"):
-        """Open a I/O of JSON data, respecting .gz file endings."""
-        if filename[-3:] == ".gz":
-            return gzip.open(filename, mode, encoding="UTF-8")
-        else:
-            return open(filename, mode, encoding="UTF-8")
