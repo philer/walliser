@@ -10,7 +10,7 @@ from glob import iglob as glob
 
 from PIL import Image
 
-from .util import Observable, observed, get_file_hash
+from .util import Observable, observed, get_file_hash, info, warning, die
 
 def set_wallpapers(*wallpaper_paths):
     """Low level wallpaper setter using feh"""
@@ -42,22 +42,16 @@ def image_data(path):
     This works for single paths (string -> ImageData)
     and for iterables (iterable<string> -> iterable<ImageData>).
     """
-    try:
-        img = Image.open(path)
-    except IOError:
-        # print("Can't open '{}'".format(path))
-        print("Can't open 'file://{}'".format(urlquote(path)))
-        return None
-    else:
-        return dict(
-            # path=path,
-            width=img.size[0],
-            height=img.size[1],
-            format=img.format,
-            hash=get_file_hash(path),
-            rating=0,
-            purity=0,
-        )
+    img = Image.open(path)
+    return dict(
+        # path=path,
+        width=img.size[0],
+        height=img.size[1],
+        format=img.format,
+        hash=get_file_hash(path),
+        rating=0,
+        purity=0,
+    )
 
 
 class Wallpaper(Observable):
@@ -148,19 +142,18 @@ class WallpaperController:
         query = None
         if args.query:
             query = eval(
-                "lambda rating=0,purity=0,width=0,height=0,format='',r=0,p=0,w=0,h=0,f='':"
-                    + args.query,
+                "lambda rating,purity,width,height,format,r,p,w,h,f:" + args.query,
                 {"__builtins__": {"min": min, "max": max}},
                 dict(),
             )
 
         if args.wallpaper_sources:
-            print("Searching for wallpapers.")
+            info("Searching for wallpapers.")
             # setting up a fast lookup - note that we need the hash since it's
             # not in data.
             known_paths = {path: hash for hash, data in config_data.items()
                                         for path in data["paths"] }
-            print("There are {} known wallpapers in config."
+            info("There are {} known wallpapers in config."
                         .format(len(known_paths), config.filename))
             wallpapers = self.wallpapers_from_paths(
                             args.wallpaper_sources, known_paths, config_data, query)
@@ -173,10 +166,11 @@ class WallpaperController:
             wp.subscribe(self)
 
         if self.updated_wallpapers:
-            print("Found {} new wallpapers.".format(len(self.updated_wallpapers)))
+            info("Found {} new wallpapers.".format(len(self.updated_wallpapers)))
 
         if not self.wallpapers:
-            raise Exception("No wallpapers found.")
+            # raise Exception("No wallpapers found.")
+            die("No wallpapers found.")
 
         self.wallpaper_count = len(self.wallpapers)
         ui.update_wallpaper_count(self.wallpaper_count)
@@ -189,16 +183,19 @@ class WallpaperController:
 
     def wallpapers_from_paths(self, sources, known_paths, config_data={}, query=None):
         """Iterator used when paths were specified."""
-        allow_defaults = query is None or query()
         for path in find_images(sources):
             try:
                 hash = known_paths[path]
             except KeyError:
-                if allow_defaults:
+                try:
                     data = image_data(path)
-                    if data:
-                        wp = Wallpaper(paths=[path], **data)
-                        self.updated_wallpapers.add(wp)
+                except IOError:
+                    warning("Can't open 'file://{}'".format(urlquote(path)))
+                    continue
+                else:
+                    wp = Wallpaper(paths=[path], **data)
+                    self.updated_wallpapers.add(wp)
+                    if wp.matches(query):
                         yield wp
             else:
                 data = config_data[hash]

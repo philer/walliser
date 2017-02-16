@@ -19,11 +19,11 @@ stats = {"saved_wallpapers": 0}
 class Core:
     """Main entry point to the application, manages run loops."""
 
-    def __init__(self, args):
+    def __init__(self, config, args):
+        self.config = config
+
         self.interval_delay = args.interval_delay
         self.timeout_callbacks = {}
-
-        self.config = Config(args.config_file, args.readonly)
 
         self.ui = Ui()
         self.ui.update_interval_delay(args.interval_delay)

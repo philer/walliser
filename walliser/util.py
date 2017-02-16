@@ -102,18 +102,18 @@ ANSI_CLEAR_LINE  = "\033[K"
 ANSI_HIDE_CURSOR = "\033[?25l"
 ANSI_SHOW_CURSOR = "\033[?25h"
 
-def die(message="Exiting…"):
-    error(message)
-    sys.exit(1)
-
-def error(message):
-    print(ANSI_RED + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
+def info(message):
+    print(message + ANSI_CLEAR_LINE)
 
 def warning(message):
     print(ANSI_YELLOW + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE)
 
-def info(message):
-    print(message + ANSI_CLEAR_LINE)
+def error(message):
+    print(ANSI_RED + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
+
+def die(message="Exiting…"):
+    error(message)
+    sys.exit(1)
 
 
 

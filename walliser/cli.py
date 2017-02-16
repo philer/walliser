@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 from argparse import ArgumentParser
 
 from .core import Core
@@ -52,7 +53,6 @@ def main():
         type=str,
         default="r >= 0",
     )
-
     parser.add_argument("--restore",
         help="Restore last wallpaper setting and exit.",
         action='store_true'
@@ -69,25 +69,20 @@ def main():
 
     args = parser.parse_args()
 
-    if args.restore:
-        if not args.config_file:
-            parser.print_help()
-            die("Error: Need config file.")
-        set_wallpapers(*Config(args.config_file)["restore"])
-
-    # elif args.maintenance:
-    #     if not args.config_file:
-    #         parser.print_help()
-    #         die("Error: Need config file.")
-    #     find_duplicates(Config(args.config_file, args.readonly))
-    #     convert_to_hash_keys(Config(args.config_file, args.readonly))
-
-    elif not args.config_file and not args.wallpaper_sources:
-        parser.print_help()
-        die("Error: Need wallpapers.")
-
+    if args.config_file:
+        config_file = args.config_file
+    elif 'WALLISER_DATABASE_FILE' in os.environ:
+        config_file = os.environ['WALLISER_DATABASE_FILE']
     else:
-        Core(args)
+        config_file = os.environ['HOME'] + "/.walliser.json.gz"
+
+    config = Config(config_file, args.readonly)
+
+    if args.restore:
+        set_wallpapers(*config["restore"])
+    else:
+        Core(config, args)
+
 
 if __name__ == "__main__":
     main()
