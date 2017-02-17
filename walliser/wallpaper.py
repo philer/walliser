@@ -2,11 +2,12 @@
 
 import os
 import subprocess
-
+import builtins
 from operator import attrgetter
 from random import shuffle
 from urllib.parse import quote as urlquote
 from glob import iglob as glob
+from datetime import datetime
 
 from PIL import Image
 
@@ -37,40 +38,10 @@ def images_in_dir(root_dir):
             yield os.path.realpath(os.path.join(directory, f))
 
 
-def image_data(path):
-    """Retrieve image information by checking real file (headers).
-    This works for single paths (string -> ImageData)
-    and for iterables (iterable<string> -> iterable<ImageData>).
-    """
-    img = Image.open(path)
-    return dict(
-        # path=path,
-        width=img.size[0],
-        height=img.size[1],
-        format=img.format,
-        hash=get_file_hash(path),
-        rating=0,
-        purity=0,
-    )
-
-
 class Wallpaper(Observable):
     """Model representing one wallpaper"""
 
-    @property
-    def as_dict(self):
-        """Dictionary representation of this object for storing.
-        Excludes path so it can be used as key.
-        """
-        return {
-            "paths": self.paths,
-            # "hash": self.hash,
-            "format": self.format,
-            "width": self.width,
-            "height": self.height,
-            "rating": self.rating,
-            "purity": self.purity,
-        }
+    TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
     @property
     def path(self):
@@ -98,26 +69,46 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
-    def __init__(self, paths, hash, format, width, height, rating, purity):
+    def __init__(self, hash, paths, format, width, height, rating, purity,
+                 added, modified):
         Observable.__init__(self)
-        self.paths = paths
         self.hash = hash
+        self.int_hash = builtins.hash(int(hash, 16)) # truncated int
+        self.paths = paths
         self.format = format
         self.width = width
         self.height = height
-        self.rating = rating
-        self.purity = purity
+        self._rating = rating
+        self._purity = purity
+        self.added = datetime.strptime(added, self.TIME_FORMAT)
+        self.modified = datetime.strptime(modified, self.TIME_FORMAT)
 
     def __repr__(self):
         return self.path
 
     def __eq__(self, other):
-        return self.hash == other.hash
-        # return self.path == other.path
+        if isinstance(other, Wallpaper):
+            return self.int_hash == other.int_hash
+        return NotImplemented
 
     def __hash__(self):
-        # return hash(Wallpaper) ^ hash(self.path)
-        return int(self.hash, 16)
+        return self.int_hash
+
+    def to_json(self):
+        """Dictionary representation of this object for storing.
+        Excludes path so it can be used as key.
+        """
+        return {
+            # "hash": self.hash
+            "paths": self.paths,
+            "format": self.format,
+            "width": self.width,
+            "height": self.height,
+            "rating": self.rating,
+            "purity": self.purity,
+            "added": self.added.strftime(self.TIME_FORMAT),
+            "modified": self.modified.strftime(self.TIME_FORMAT),
+        }
 
     def matches(self, query):
         return query is None or query(
@@ -142,28 +133,23 @@ class WallpaperController:
         query = None
         if args.query:
             query = eval(
-                "lambda rating,purity,width,height,format,r,p,w,h,f:" + args.query,
+                "lambda rating,purity,width,height,format,r,p,w,h,f:"
+                        + args.query,
                 {"__builtins__": {"min": min, "max": max}},
                 dict(),
             )
 
         if args.wallpaper_sources:
-            info("Searching for wallpapers.")
-            # setting up a fast lookup - note that we need the hash since it's
-            # not in data.
-            known_paths = {path: hash for hash, data in config_data.items()
-                                        for path in data["paths"] }
-            info("There are {} known wallpapers in config."
-                        .format(len(known_paths), config.filename))
-            wallpapers = self.wallpapers_from_paths(
-                            args.wallpaper_sources, known_paths, config_data, query)
+            wallpapers = self.wallpapers_from_paths(args.wallpaper_sources,
+                                                    config_data)
         else:
-            wallpapers = self.wallpapers_from_config(config_data, query)
+            wallpapers = (Wallpaper(hash=hash, **data)
+                                for hash, data in config_data.items())
 
         self.wallpapers = []
-        for wp in wallpapers:
-            self.wallpapers.append(wp)
+        for wp in set(wp for wp in wallpapers if wp.matches(query)):
             wp.subscribe(self)
+            self.wallpapers.append(wp)
 
         if self.updated_wallpapers:
             info("Found {} new wallpapers.".format(len(self.updated_wallpapers)))
@@ -180,39 +166,48 @@ class WallpaperController:
         else:
             self.wallpapers.sort(key=attrgetter("path"))
 
-
-    def wallpapers_from_paths(self, sources, known_paths, config_data={}, query=None):
-        """Iterator used when paths were specified."""
+    def wallpapers_from_paths(self, sources, config_data={}):
+        """Iterate wallpapers in given paths, including new ones."""
+        known_paths = {path: hash for hash, data in config_data.items()
+                                    for path in data["paths"] }
+        now = datetime.now().strftime(Wallpaper.TIME_FORMAT)
         for path in find_images(sources):
-            try:
+            if path in known_paths:
                 hash = known_paths[path]
-            except KeyError:
+                data = config_data[hash]
+                # check for outdated data formatting
+                updated = False
+                if "added" not in data:
+                    updated = True
+                    data["added"] = data["modified"] = now
+            else: # new path
+                updated = True
                 try:
-                    data = image_data(path)
+                    img = Image.open(path) # Do this first to abort immediately
+                                           # for non-images.
+                    hash = get_file_hash(path)
+                    if hash in config_data:
+                        data = config_data[hash].copy()
+                        data["paths"].append(path)
+                        data["paths"].sort()
+                    else:  # new file
+                        data = {
+                            "paths": [path],
+                            "format": img.format,
+                            "width": img.size[0],
+                            "height": img.size[1],
+                            "rating": 0,
+                            "purity": 0,
+                            "added": now,
+                            "modified": now,
+                        }
                 except IOError:
                     warning("Can't open 'file://{}'".format(urlquote(path)))
                     continue
-                else:
-                    wp = Wallpaper(paths=[path], **data)
-                    self.updated_wallpapers.add(wp)
-                    if wp.matches(query):
-                        yield wp
-            else:
-                data = config_data[hash]
-                wp = Wallpaper(hash=hash, **data)
-                if path not in wp.paths:
-                    wp.paths.append(path)
-                    wp.paths.sort()
-                    self.updated_wallpapers.add(wp)
-                if wp.matches(query):
-                    yield wp
-
-    def wallpapers_from_config(self, config_data={}, query=None):
-        """Itertor used when no paths arguments were provided."""
-        for hash, data in config_data.items():
             wp = Wallpaper(hash=hash, **data)
-            if wp.matches(query):
-                yield wp
+            if updated:
+                self.updated_wallpapers.add(wp)
+            yield wp
 
     def notify(self, wallpaper, *_):
         self.updated_wallpapers.add(wallpaper)
@@ -220,14 +215,15 @@ class WallpaperController:
     def update_config(self, config):
         if not self.updated_wallpapers:
             return 0
-        entries = len(self.updated_wallpapers)
-        config.rec_update({
-            "wallpapers": {
-                wp.hash: wp.as_dict for wp in self.updated_wallpapers
-            },
-        })
+        count = len(self.updated_wallpapers)
+        now = datetime.now()
+        data = dict()
+        for wp in self.updated_wallpapers:
+            wp.modified = now
+            data[wp.hash] = wp.to_json()
+        config["wallpapers"].update(data)
         self.updated_wallpapers = set()
-        return entries
+        return count
 
     @staticmethod
     def update_live_wallpapers(wallpapers):
