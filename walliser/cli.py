@@ -54,14 +54,6 @@ def main():
         type=str,
         default="r >= 0",
     )
-    parser.add_argument("--restore",
-        help="Restore last wallpaper setting and exit.",
-        action='store_true'
-    )
-    # parser.add_argument("--maintenance",
-    #     help="Perform maintenance (e.g. config file update)",
-    #     action='store_true'
-    # )
     parser.add_argument("--read-only",
         help="Use this flag to prevent any changes to the config file.",
         dest="readonly",
@@ -77,12 +69,7 @@ def main():
     else:
         config_file = os.environ['HOME'] + "/.walliser.json.gz"
 
-    config = Config(config_file, args.readonly)
-
-    if args.restore:
-        set_wallpapers(*config["restore"])
-    else:
-        Core(Ui(), config, args)
+    Core(Ui(), Config(config_file, args.readonly), args)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ class Core:
         self.ui = ui
         self.wallpaper_controller = WallpaperController(ui, config, args)
 
-        self.stats = {"saved_wallpapers": 0}
+        self.stats = {"wallpaper_updates": 0}
         self.timeout_callbacks = {}
         self.interval_delay = args.interval_delay
         self.ui.update_interval_delay(args.interval_delay)
@@ -34,35 +34,23 @@ class Core:
             self.run_event_loop()
 
         self.save_config()
-        # if stats["saved_wallpapers"]:
-        #     print(str(stats["saved_wallpapers"]) + " wallpaper updates saved")
 
     def save_config(self):
-        updates_count = self.wallpaper_controller.update_config(self.config)
-        self.config["restore"] = [
-            repr(wp) for wp in self.screen_controller.current_wallpapers
-        ]
-        self.config.save()
+        wallpaper_updates = self.wallpaper_controller.updated_json()
+        if wallpaper_updates:
+            self.config["wallpapers"].update(wallpaper_updates)
+            self.config.save()
 
-        self.stats["saved_wallpapers"] += updates_count
-        print("{:d} entr{:s} saved ({:d} total)".format(
+        updates_count =  len(wallpaper_updates)
+        self.stats["wallpaper_updates"] += updates_count
+        print("{} update{} saved ({} total)".format(
             updates_count,
-            "y" if updates_count == 1 else "ies",
-            self.stats["saved_wallpapers"]
+            "" if updates_count == 1 else "s",
+            self.stats["wallpaper_updates"]
         ))
 
     def assign_ui_listeners(self):
-        """Set up Ui interaction keypress listeners.
-
-        The following keyboard mappings are currently implemented/planned:
-          - next/prev (global): n/b
-          - next/prev (current): right/left
-          - (un)pause (global): p
-          - (un)pause (current): space
-          - rating/purity: ws/ed (ws/ad)
-          - help: h
-          - quit: ESC (qQ)
-        """
+        """Set up Ui interaction listeners."""
         def with_interval_reset(fn):
             """Some signals should reset the pending rotation timeout."""
             @wraps(fn)

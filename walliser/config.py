@@ -13,7 +13,7 @@ def dict_update_recursive(a, b):
             a[key] = b[key]
 
 def open_config_file(filename, mode="r"):
-    """Open a I/O of JSON data, respecting .gz file endings."""
+    """Open a file respecting .gz file endings."""
     if filename[-3:] == ".gz":
         return gzip.open(filename, mode, encoding="UTF-8")
     else:
@@ -43,16 +43,9 @@ class Config(dict):
         """update recursively (only dicts, no other collection types)"""
         dict_update_recursive(self, data)
 
-    def save(self, pretty="auto"):
+    def save(self):
         """Save current configuration into given file."""
         if self.readonly:
             return
         with open_config_file(self.filename, "wt") as config_file:
-
-            if pretty == True or (
-                    pretty == "auto" and self.filename[-3:] != ".gz"):
-                json.dump(self, config_file,
-                    sort_keys=True, indent="\t")
-            else:
-                json.dump(self, config_file,
-                    sort_keys=False, separators=(",", ":"))
+            json.dump(self, config_file, sort_keys=True, separators=(",", ":"))

@@ -212,18 +212,14 @@ class WallpaperController:
     def notify(self, wallpaper, *_):
         self.updated_wallpapers.add(wallpaper)
 
-    def update_config(self, config):
-        if not self.updated_wallpapers:
-            return 0
-        count = len(self.updated_wallpapers)
+    def updated_json(self):
         now = datetime.now()
         data = dict()
         for wp in self.updated_wallpapers:
             wp.modified = now
             data[wp.hash] = wp.to_json()
-        config["wallpapers"].update(data)
         self.updated_wallpapers = set()
-        return count
+        return data
 
     @staticmethod
     def update_live_wallpapers(wallpapers):
