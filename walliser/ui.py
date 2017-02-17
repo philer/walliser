@@ -104,12 +104,12 @@ def purity_as_string(purity, length=5):
 
 def screen_to_line(screen):
     """The shortest possible user friendly description of a wallpaper."""
-    return ("{selected:s} {idx:d}{current_or_paused:s}"
-            " [{rating:s}][{purity:s}] {url:s}").format(
-        idx=screen.idx + 1,
-        selected="»" if screen.selected else " ",
-        current_or_paused="*" if screen.current else
-                          "P" if screen.paused else " ",
+    return ("{selected}{current_or_paused}"
+            "[{rating}][{purity}] {url}").format(
+        selected="│" if screen.selected else " ",
+        current_or_paused="⏵" if screen.current else
+                          "⏸" if screen.paused else
+                          " ",
         rating=rating_as_string(screen.current_wallpaper.rating, 2),
         purity=purity_as_string(screen.current_wallpaper.purity, 2),
         url=screen.current_wallpaper.url,
@@ -117,13 +117,18 @@ def screen_to_line(screen):
 
 def screen_to_multiline(screen):
     """Double-line user friendly description of a wallpaper."""
-    return ("{selected:s} {idx:d}{current:s}"
-            "[{rating:s}][{purity:s}] {format:s} {width:d}x{height:d}"
-            " {paused:s}\n{url:s}").format(
-        idx=screen.idx + 1,
-        selected="»" if screen.selected else " ",
-        current="*" if screen.current else " ",
-        paused="paused" if screen.paused else "      ",
+    # ⏩ ⏪ ⏫ ⏬ ⏭ ⏮ ⏯ ⏴ ⏵ ⏶ ⏷ ⏸ ⏹ ⏺ •
+    # ❬❭❰❱❮❯❴❵❨❩⸤⸥⸢⸣ ⎱⎰⎧⎩⎡⎣ (https://en.wikipedia.org/wiki/Bracket)
+    return ("{selected}{current_or_paused} "
+            "[{rating}][{purity}] {format} {width:d}×{height:d}"
+            # " {paused}"
+            "\n{selected}{url}").format(
+        selected="│" if screen.selected else " ",
+        # current="⏵" if screen.current else " ",
+        # paused="paused" if screen.paused else "",
+        current_or_paused="⏵" if screen.current else
+                          "⏸" if screen.paused else
+                          " ",
         rating=rating_as_string(screen.current_wallpaper.rating, 5),
         purity=purity_as_string(screen.current_wallpaper.purity, 5),
         width=screen.current_wallpaper.width,
@@ -315,8 +320,8 @@ class Ui:
             self.wallpaper_count * self.interval_delay / self.screen_count)
 
         text = (
-                "{wallpaper_count:d} wallpapers | "
-                "{screen_count:d} screens | "
+                "{wallpaper_count:d} wallpapers ⋮ "
+                "{screen_count:d} screens ⋮ "
                 "{interval_delay:.3}s "
                 "({run_time}) "
             ).format(
