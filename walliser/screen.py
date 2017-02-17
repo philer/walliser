@@ -2,6 +2,7 @@
 
 import subprocess
 
+from .wallpaper import show_wallpapers
 from .util import Observable, observed, modlist, each
 
 class Screen(Observable):
@@ -39,8 +40,8 @@ class Screen(Observable):
         self._paused = paused
 
     def __init__(self, idx, wallpapers,
-            current=False, selected=False, paused=False):
-        Observable.__init__(self)
+                 current=False, selected=False, paused=False):
+        super().__init__()
         self.idx = idx
         self.wallpapers = wallpapers
         self._current_wallpaper_offset = 0
@@ -57,6 +58,7 @@ class Screen(Observable):
     def cycle_wallpaper(self, offset):
         self.current_wallpaper.unsubscribe(self)
         self._current_wallpaper_offset += offset
+        self.current_wallpaper.show(self.idx)
         self.current_wallpaper.subscribe(self)
 
     def next_wallpaper(self):
@@ -78,10 +80,6 @@ class ScreenController:
         """Returns last (automatically) updated screen."""
         if self.active_screens:
             return self.active_screens[self._current_screen_offset]
-
-    @property
-    def current_wallpapers(self):
-        return [scr.current_wallpaper for scr in self.screens]
 
     @property
     def selected_screen(self):
@@ -135,9 +133,8 @@ class ScreenController:
         """Update the moving parts of the UI that we can influence."""
         each(self.ui.update_screen, self.screens)
 
-    def update_live_screens(self):
-        """Get each screen's current wallpaper and put them on the monitors."""
-        self.wallpaper_controller.update_live_wallpapers(self.current_wallpapers)
+    def show_wallpapers(self):
+        show_wallpapers(scr.current_wallpaper for scr in self.screens)
 
     def cycle_screens(self):
         """Shift entire screens array by one position."""
@@ -147,7 +144,7 @@ class ScreenController:
         self._update_active_screens()
         self.select_prev()
         self.update_ui()
-        self.update_live_screens()
+        self.show_wallpapers()
 
     def next(self):
         """Cycle forward in the global wallpaper rotation."""
@@ -157,8 +154,6 @@ class ScreenController:
             self._current_screen_offset += 1
             self.current_screen.current = True
             self.current_screen.next_wallpaper()
-            self.update_live_screens()
-
     def prev(self):
         """Cycle backward in the global wallpaper rotation."""
         current = self.current_screen
@@ -167,7 +162,6 @@ class ScreenController:
             self.current_screen.current = False
             self._current_screen_offset -= 1
             self.current_screen.current = True
-            self.update_live_screens()
 
     def select(self, scr):
         """Flexible input setter for selected_screen"""
@@ -216,29 +210,3 @@ class ScreenController:
             self.current_screen.current = True
         else:
             self.active_screens = []
-
-    def next_on_selected(self):
-        """Update selected (or current) screen to the next wallpaper."""
-        self.selected_screen.next_wallpaper()
-        self.update_live_screens()
-
-    def prev_on_selected(self):
-        """Update selected (or current) screen to the previous wallpaper."""
-        self.selected_screen.prev_wallpaper()
-        self.update_live_screens()
-
-    def inc_rating_on_selected(self):
-        """Increment rating of current wallpaper on selected screen."""
-        self.selected_screen.current_wallpaper.rating += 1
-
-    def dec_rating_on_selected(self):
-        """Decrement rating of current wallpaper on selected screen."""
-        self.selected_screen.current_wallpaper.rating -= 1
-
-    def inc_purity_on_selected(self):
-        """Increment purity of current wallpaper on selected screen."""
-        self.selected_screen.current_wallpaper.purity += 1
-
-    def dec_purity_on_selected(self):
-        """Decrement purity of current wallpaper on selected screen."""
-        self.selected_screen.current_wallpaper.purity -= 1

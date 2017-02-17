@@ -12,6 +12,14 @@ import walliser
 class Core:
     """Main entry point to the application, manages signals and main loop."""
 
+    @property
+    def selected_screen(self):
+        return self.screen_controller.selected_screen
+
+    @property
+    def selected_wallpaper(self):
+        return self.selected_screen.current_wallpaper
+
     def __init__(self, ui, config, args):
         self.config = config
         self.ui = ui
@@ -25,22 +33,23 @@ class Core:
         with self.ui:
             self.screen_controller = ScreenController(ui,
                                                     self.wallpaper_controller)
-            self.screen_controller.update_live_screens()
+            self.screen_controller.show_wallpapers()
 
             signal.signal(signal.SIGINT, self.interrupt)
             self.assign_ui_listeners()
             self.set_timeout(self.interval_delay, self.update_wallpapers)
-            self.set_timeout(5, self.save_config)
+            self.set_timeout(2, self.save_config)
             self.run_event_loop()
 
         self.save_config()
 
     def save_config(self):
+        self.clear_timeout(self.save_config)
         wallpaper_updates = self.wallpaper_controller.updated_json()
-        if wallpaper_updates:
-            self.config["wallpapers"].update(wallpaper_updates)
-            self.config.save()
-
+        if not wallpaper_updates:
+            return
+        self.config["wallpapers"].update(wallpaper_updates)
+        self.config.save()
         updates_count =  len(wallpaper_updates)
         self.stats["wallpaper_updates"] += updates_count
         print("{} update{} saved ({} total)".format(
@@ -51,6 +60,7 @@ class Core:
 
     def assign_ui_listeners(self):
         """Set up Ui interaction listeners."""
+
         def with_interval_reset(fn):
             """Some signals should reset the pending rotation timeout."""
             @wraps(fn)
@@ -59,30 +69,46 @@ class Core:
                 self.set_timeout(self.interval_delay, self.update_wallpapers)
             return wrapper
 
-        def with_interval_delay(fn, delay=2):
-            """Some signals should add a short delay before rotation resumes."""
-            @wraps(fn)
-            def wrapper(*args):
-                fn(*args)
-                self.extend_timeout(delay, self.update_wallpapers)
-            return wrapper
+        def next_on_selected():
+            """Update selected (or current) screen to the next wallpaper."""
+            self.selected_screen.next_wallpaper()
+            self.set_timeout(self.interval_delay, self.update_wallpapers)
 
-        def with_save(fn, delay=5):
-            """Some signals should cause the configuration to be saved."""
-            @wraps(fn)
-            def wrapper(*args):
-                fn(*args)
-                self.set_timeout(delay, self.save_config)
-            return wrapper
+        def prev_on_selected():
+            """Update selected (or current) screen to the previous wallpaper."""
+            self.selected_screen.prev_wallpaper()
+            self.set_timeout(self.interval_delay, self.update_wallpapers)
 
-        def save_now():
-            del self.timeout_callbacks[self.save_config]
-            self.save_config()
+        def inc_rating():
+            self.selected_wallpaper.rating += 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        def dec_rating():
+            self.selected_wallpaper.rating -= 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        def inc_purity():
+            self.selected_wallpaper.purity += 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        def dec_purity():
+            self.selected_wallpaper.purity -= 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        def toggle_tag(input):
+            if input
+                self.selected_wallpaper.toggle_tag(input)
+                self.set_timeout(10, self.save_config)
+            self.extend_timeout(3, self.update_wallpapers)
 
         sig = self.ui.on_signal
         scrctrl = self.screen_controller
         sig(walliser.QUIT, self.interrupt)
-        sig(walliser.SAVE, save_now)
+        sig(walliser.SAVE, self.save_config)
         sig(walliser.UI_RESIZE, scrctrl.update_ui)
         sig(walliser.NEXT, with_interval_reset(scrctrl.next))
         sig(walliser.PREV, with_interval_reset(scrctrl.prev))
@@ -92,18 +118,14 @@ class Core:
         sig(walliser.NEXT_SCREEN, scrctrl.select_next)
         sig(walliser.PREV_SCREEN, scrctrl.select_prev)
         sig(walliser.TOGGLE_SCREEN, scrctrl.pause_unpause_selected)
-        sig(walliser.NEXT_ON_SCREEN,
-            with_interval_reset(scrctrl.next_on_selected))
-        sig(walliser.PREV_ON_SCREEN,
-            with_interval_reset(scrctrl.prev_on_selected))
-        sig(walliser.INCREMENT_RATING,
-            with_interval_delay(with_save(scrctrl.inc_rating_on_selected)))
-        sig(walliser.DECREMENT_RATING,
-            with_interval_delay(with_save(scrctrl.dec_rating_on_selected)))
-        sig(walliser.INCREMENT_PURITY,
-            with_interval_delay(with_save(scrctrl.inc_purity_on_selected)))
-        sig(walliser.DECREMENT_PURITY,
-            with_interval_delay(with_save(scrctrl.dec_purity_on_selected)))
+        sig(walliser.NEXT_ON_SCREEN, next_on_selected)
+        sig(walliser.PREV_ON_SCREEN, prev_on_selected)
+        sig(walliser.INCREMENT_RATING, inc_rating)
+        sig(walliser.DECREMENT_RATING, dec_rating)
+        sig(walliser.INCREMENT_PURITY, inc_purity)
+        sig(walliser.DECREMENT_PURITY, dec_purity)
+        sig(walliser.TOGGLE_TAG, toggle_tag)
+
 
     def update_wallpapers(self):
         self.screen_controller.next()
@@ -124,6 +146,12 @@ class Core:
     def set_timeout(self, delay, fn):
         self.timeout_callbacks[fn] = time() + delay
 
+    def clear_timeout(self, fn):
+        try:
+            del self.timeout_callbacks[fn]
+        except KeyError:
+            pass
+
     def extend_timeout(self, min_delay, fn):
         self.timeout_callbacks[fn] = max(
             self.timeout_callbacks[fn],
@@ -143,5 +171,5 @@ class Core:
                 now = time()
                 for fn, t in self.timeout_callbacks.copy().items():
                     if now > t:
-                        del self.timeout_callbacks[fn]
+                        self.clear_timeout(fn)
                         fn()

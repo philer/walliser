@@ -13,9 +13,23 @@ from PIL import Image
 
 from .util import Observable, observed, get_file_hash, info, warning, die
 
-def set_wallpapers(*wallpaper_paths):
+def set_wallpaper_paths(wallpaper_paths):
     """Low level wallpaper setter using feh"""
     subprocess.call(["feh", "--bg-fill", "--no-fehbg"] + list(wallpaper_paths))
+
+live_wallpapers = []
+
+def show_wallpapers(wallpapers):
+    """Set actually visible wallpapers."""
+    global live_wallpapers
+    live_wallpapers = list(wallpapers)
+    set_wallpaper_paths((wp.path for wp in live_wallpapers))
+
+def show_wallpaper(screen_index, wallpaper):
+    """Set actually visible wallpapers."""
+    live_wallpapers[screen_index] = wallpaper
+    set_wallpaper_paths((wp.path for wp in live_wallpapers))
+
 
 
 def find_images(patterns):
@@ -69,19 +83,20 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
-    def __init__(self, hash, paths, format, width, height, rating, purity,
-                 added, modified):
-        Observable.__init__(self)
+    def __init__(self, hash, paths, format, width, height, added, modified,
+                 rating=0, purity=0, tags=None):
+        super().__init__()
         self.hash = hash
         self.int_hash = builtins.hash(int(hash, 16)) # truncated int
         self.paths = paths
         self.format = format
         self.width = width
         self.height = height
-        self._rating = rating
-        self._purity = purity
         self.added = datetime.strptime(added, self.TIME_FORMAT)
         self.modified = datetime.strptime(modified, self.TIME_FORMAT)
+        self._rating = rating
+        self._purity = purity
+        self.tags = tags if tags is not None else []
 
     def __repr__(self):
         return self.path
@@ -99,22 +114,35 @@ class Wallpaper(Observable):
         Excludes path so it can be used as key.
         """
         return {
-            # "hash": self.hash
             "paths": self.paths,
             "format": self.format,
             "width": self.width,
             "height": self.height,
-            "rating": self.rating,
-            "purity": self.purity,
             "added": self.added.strftime(self.TIME_FORMAT),
             "modified": self.modified.strftime(self.TIME_FORMAT),
+            **{
+                attr: getattr(self, attr)
+                for attr in ["rating", "purity", "tags"]
+                if getattr(self, attr)
+            }
         }
+
+    @observed
+    def toggle_tag(self, tag):
+        try:
+            self.tags.remove(tag)
+        except ValueError:
+            self.tags.append(tag)
+            self.tags.sort()
 
     def matches(self, query):
         return query is None or query(
-            self.rating, self.purity, self.width, self.height, self.format,
-            self.rating, self.purity, self.width, self.height, self.format,
+            self.rating, self.purity, self.tags, self.width, self.height, self.format,
+            self.rating, self.purity, self.tags, self.width, self.height, self.format,
         )
+
+    def show(self, screen_index=0):
+        show_wallpaper(screen_index, self)
 
 
 class WallpaperController:
@@ -133,7 +161,7 @@ class WallpaperController:
         query = None
         if args.query:
             query = eval(
-                "lambda rating,purity,width,height,format,r,p,w,h,f:"
+                "lambda rating,purity,tags,width,height,format,r,p,t,w,h,f:"
                         + args.query,
                 {"__builtins__": {"min": min, "max": max}},
                 dict(),
@@ -196,8 +224,6 @@ class WallpaperController:
                             "format": img.format,
                             "width": img.size[0],
                             "height": img.size[1],
-                            "rating": 0,
-                            "purity": 0,
                             "added": now,
                             "modified": now,
                         }
@@ -220,8 +246,3 @@ class WallpaperController:
             data[wp.hash] = wp.to_json()
         self.updated_wallpapers = set()
         return data
-
-    @staticmethod
-    def update_live_wallpapers(wallpapers):
-        """Set actually visible wallpapers."""
-        set_wallpapers(*(wp.path for wp in wallpapers))

@@ -3,6 +3,7 @@
 import os
 import sys
 import curses
+from inspect import signature
 from datetime import timedelta
 
 from .util import Observable, observed
@@ -31,6 +32,7 @@ keys_to_signals = {
     's':               walliser.DECREMENT_RATING,
     'd':               walliser.INCREMENT_PURITY,
     'e':               walliser.DECREMENT_PURITY,
+    't':               walliser.TOGGLE_TAG,
 }
 
 def right_pad(length, string, character=" "):
@@ -104,24 +106,26 @@ def purity_as_string(purity, length=5):
 
 def screen_to_line(screen):
     """The shortest possible user friendly description of a wallpaper."""
+    wp = screen.current_wallpaper
     return ("{selected}{current_or_paused}"
             "[{rating}][{purity}] {url}").format(
         selected="│" if screen.selected else " ",
         current_or_paused="⏵" if screen.current else
                           "⏸" if screen.paused else
                           " ",
-        rating=rating_as_string(screen.current_wallpaper.rating, 2),
-        purity=purity_as_string(screen.current_wallpaper.purity, 2),
-        url=screen.current_wallpaper.url,
+        rating=rating_as_string(wp.rating, 2),
+        purity=purity_as_string(wp.purity, 2),
+        url=wp.url,
     )
 
 def screen_to_multiline(screen):
     """Double-line user friendly description of a wallpaper."""
     # ⏩ ⏪ ⏫ ⏬ ⏭ ⏮ ⏯ ⏴ ⏵ ⏶ ⏷ ⏸ ⏹ ⏺ •
     # ❬❭❰❱❮❯❴❵❨❩⸤⸥⸢⸣ ⎱⎰⎧⎩⎡⎣ (https://en.wikipedia.org/wiki/Bracket)
+    wp = screen.current_wallpaper
     return ("{selected}{current_or_paused} "
             "[{rating}][{purity}] {format} {width:d}×{height:d}"
-            # " {paused}"
+            " {tags}"
             "\n{selected}{url}").format(
         selected="│" if screen.selected else " ",
         # current="⏵" if screen.current else " ",
@@ -129,12 +133,13 @@ def screen_to_multiline(screen):
         current_or_paused="⏵" if screen.current else
                           "⏸" if screen.paused else
                           " ",
-        rating=rating_as_string(screen.current_wallpaper.rating, 5),
-        purity=purity_as_string(screen.current_wallpaper.purity, 5),
-        width=screen.current_wallpaper.width,
-        height=screen.current_wallpaper.height,
-        format=screen.current_wallpaper.format,
-        url=screen.current_wallpaper.url,
+        rating=rating_as_string(wp.rating, 5),
+        purity=purity_as_string(wp.purity, 5),
+        width=wp.width,
+        height=wp.height,
+        format=wp.format,
+        tags="(" + ",".join(wp.tags) + ")" if wp.tags else "",
+        url=wp.url,
     )
 
 
@@ -155,7 +160,7 @@ class StdOutWrapper(Observable):
 class Ui:
     """Curses-based text interface for WallpaperSetter"""
 
-    SCREEN_WINDOW_MAX_HEIGHT = 2
+    MAX_SCREEN_WINDOW_HEIGHT = 2
 
     def __init__(self):
         self.signal_listeners = dict()
@@ -220,6 +225,17 @@ class Ui:
         curses.echo()
         curses.endwin()
 
+    def input(self, prompt="❭ "):
+        self.header_window.erase()
+        self.header_window.addstr(0, 0, prompt)
+        self.header_window.refresh()
+        curses.curs_set(1)
+        curses.echo()
+        input = self.header_window.getstr(0, len(prompt))
+        curses.noecho()
+        curses.curs_set(0)
+        self.update_header()
+        return input.decode("utf-8")
 
     def process_keypress_listeners(self):
         char = self.root_win.getch()
@@ -230,11 +246,11 @@ class Ui:
             self.refresh_header()
             # Not responsible for body content here, done via listener
 
+        key = curses.keyname(char).decode("utf-8")
         try:
             signal = keys_to_signals[char]
         except KeyError:
             try:
-                key = curses.keyname(char).decode("utf-8")
                 signal = keys_to_signals[key]
             except KeyError:
                 return False
@@ -243,15 +259,20 @@ class Ui:
         except KeyError:
             return False
 
+        args = {"signal": signal, "char": char, "key": key}
+        if signal in walliser.input_signals:
+            args["input"] = self.input().strip()
         for listener in listeners:
-                listener()
+                listener[0](**{key: args[key] for key in listener[1:] if key in args})
         return True
 
-    def on_signal(self, signal, callback):
+    def on_signal(self, signal, fn):
+        """Add listener for given signal perserving order and duplicates."""
+        fn_data = fn, *signature(fn).parameters.keys()
         try:
-            self.signal_listeners[signal].append(callback)
+            self.signal_listeners[signal].append(fn_data)
         except KeyError:
-            self.signal_listeners[signal] = [callback]
+            self.signal_listeners[signal] = [fn_data]
 
     def layout(self):
         """Hardcoded ui layout.
@@ -264,7 +285,8 @@ class Ui:
 
         if height > 2:
             header_height = 2
-            self.header = self.root_win.subwin(header_height, width, 0, 0)
+            self.header_window = self.root_win.subwin(1, width, 0, 0)
+            self.root_win.insstr(1, 0, "─" * width)
             self.update_header()
         else:
             header_height = 0
@@ -276,7 +298,7 @@ class Ui:
         if self.screen_count:
             self.screen_window_height = min(
                 body_height // self.screen_count,
-                Ui.SCREEN_WINDOW_MAX_HEIGHT
+                Ui.MAX_SCREEN_WINDOW_HEIGHT
             )
             for idx in range(self.screen_count):
                 self.screen_windows.append(body.derwin(
@@ -331,8 +353,7 @@ class Ui:
                 run_time=str(timedelta(seconds=int(run_time))),
             )
         text += (" " * (self.width - len(text) - len(self.info_string))
-               + self.info_string
-               + "\n" + ("─" * self.width))
+               + self.info_string)
         self.header_string = text
         self.refresh_header()
 
@@ -351,7 +372,7 @@ class Ui:
         self.refresh_screen(screen.idx)
 
     def refresh_header(self):
-        self._set_window_content(self.header, self.header_string)
+        self._set_window_content(self.header_window, self.header_string)
 
     def refresh_screen(self, idx):
         self._set_window_content(

@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from .core import Core
 from .ui import Ui
 from .config import Config
-from .wallpaper import set_wallpapers
+# from .wallpaper import set_wallpaper_paths
 # from .maintenance import find_duplicates, convert_to_hash_keys
 # from .util import error, die
 
