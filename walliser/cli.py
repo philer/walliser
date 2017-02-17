@@ -5,6 +5,7 @@ import os
 from argparse import ArgumentParser
 
 from .core import Core
+from .ui import Ui
 from .config import Config
 from .wallpaper import set_wallpapers
 # from .maintenance import find_duplicates, convert_to_hash_keys
@@ -33,7 +34,7 @@ def main():
         metavar="N",
         dest="interval_delay",
         type=float,
-        default=2.0,
+        default=5.0,
     )
     sorting_group = parser.add_mutually_exclusive_group()
     sorting_group.add_argument("-s", "--shuffle",
@@ -81,7 +82,7 @@ def main():
     if args.restore:
         set_wallpapers(*config["restore"])
     else:
-        Core(config, args)
+        Core(Ui(), config, args)
 
 
 if __name__ == "__main__":

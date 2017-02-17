@@ -4,33 +4,30 @@ from functools import wraps
 from time import time
 
 import signal
-import curses
 
 from .wallpaper import WallpaperController
 from .screen import ScreenController
-from .ui import Ui
+import walliser
 
 class Core:
-    """Main entry point to the application, manages run loops."""
+    """Main entry point to the application, manages signals and main loop."""
 
-    def __init__(self, config, args):
+    def __init__(self, ui, config, args):
         self.config = config
+        self.ui = ui
+        self.wallpaper_controller = WallpaperController(ui, config, args)
+
         self.stats = {"saved_wallpapers": 0}
-
-        self.interval_delay = args.interval_delay
         self.timeout_callbacks = {}
-
-        self.ui = Ui()
+        self.interval_delay = args.interval_delay
         self.ui.update_interval_delay(args.interval_delay)
 
-        self.wallpaper_controller = WallpaperController(
-            self.ui, self.config, args)
-
         with self.ui:
-            self.screen_controller = ScreenController(self.ui,
-                self.wallpaper_controller)
+            self.screen_controller = ScreenController(ui,
+                                                    self.wallpaper_controller)
             self.screen_controller.update_live_screens()
 
+            signal.signal(signal.SIGINT, self.interrupt)
             self.assign_ui_listeners()
             self.set_timeout(self.interval_delay, self.update_wallpapers)
             self.set_timeout(5, self.save_config)
@@ -39,10 +36,6 @@ class Core:
         self.save_config()
         # if stats["saved_wallpapers"]:
         #     print(str(stats["saved_wallpapers"]) + " wallpaper updates saved")
-
-    def update_wallpapers(self):
-        self.screen_controller.next()
-        self.set_timeout(self.interval_delay, self.update_wallpapers)
 
     def save_config(self):
         updates_count = self.wallpaper_controller.update_config(self.config)
@@ -58,18 +51,6 @@ class Core:
             self.stats["saved_wallpapers"]
         ))
 
-    def increase_interval_delay(self):
-        """Reduce wallpaper rotation speed by a quarter second."""
-        # self.interval_delay *= 1.1
-        self.interval_delay += 0.25
-        self.ui.update_interval_delay(self.interval_delay)
-
-    def reduce_interval_delay(self):
-        """Increase wallpaper rotation speed by a quarter second."""
-        # self.interval_delay *= 1/1.1
-        self.interval_delay -= 0.25
-        self.ui.update_interval_delay(self.interval_delay)
-
     def assign_ui_listeners(self):
         """Set up Ui interaction keypress listeners.
 
@@ -82,17 +63,8 @@ class Core:
           - help: h
           - quit: ESC (qQ)
         """
-
-        keypress = self.ui.on_keypress
-
-        # keypress('q',                self.interrupt)
-        # keypress('Q',                self.interrupt)
-        keypress('esc',              self.interrupt)
-        keypress('^Q',              self.interrupt)
-        signal.signal(signal.SIGINT, self.interrupt)
-
         def with_interval_reset(fn):
-            """Some keypress listeners should reset the wallpaper interval."""
+            """Some signals should reset the pending rotation timeout."""
             @wraps(fn)
             def wrapper(*args):
                 fn(*args)
@@ -100,16 +72,15 @@ class Core:
             return wrapper
 
         def with_interval_delay(fn, delay=2):
-            """Some keypress listeners should ensure a short delay before
-            wallpaper rotation resumes."""
+            """Some signals should add a short delay before rotation resumes."""
             @wraps(fn)
             def wrapper(*args):
                 fn(*args)
                 self.extend_timeout(delay, self.update_wallpapers)
             return wrapper
 
-        def with_config_save(fn, delay=5):
-            """Some keypress listeners should cause the configuration to be saved."""
+        def with_save(fn, delay=5):
+            """Some signals should cause the configuration to be saved."""
             @wraps(fn)
             def wrapper(*args):
                 fn(*args)
@@ -120,45 +91,47 @@ class Core:
             del self.timeout_callbacks[self.save_config]
             self.save_config()
 
-        keypress('^S', save_now)
-
+        sig = self.ui.on_signal
         scrctrl = self.screen_controller
+        sig(walliser.QUIT, self.interrupt)
+        sig(walliser.SAVE, save_now)
+        sig(walliser.UI_RESIZE, scrctrl.update_ui)
+        sig(walliser.NEXT, with_interval_reset(scrctrl.next))
+        sig(walliser.PREV, with_interval_reset(scrctrl.prev))
+        sig(walliser.CYCLE_SCREENS, with_interval_reset(scrctrl.cycle_screens))
+        sig(walliser.INCREASE_DELAY, self.increase_interval_delay)
+        sig(walliser.REDUCE_DELAY, self.reduce_interval_delay)
+        sig(walliser.NEXT_SCREEN, scrctrl.select_next)
+        sig(walliser.PREV_SCREEN, scrctrl.select_prev)
+        sig(walliser.TOGGLE_SCREEN, scrctrl.pause_unpause_selected)
+        sig(walliser.NEXT_ON_SCREEN,
+            with_interval_reset(scrctrl.next_on_selected))
+        sig(walliser.PREV_ON_SCREEN,
+            with_interval_reset(scrctrl.prev_on_selected))
+        sig(walliser.INCREMENT_RATING,
+            with_interval_delay(with_save(scrctrl.inc_rating_on_selected)))
+        sig(walliser.DECREMENT_RATING,
+            with_interval_delay(with_save(scrctrl.dec_rating_on_selected)))
+        sig(walliser.INCREMENT_PURITY,
+            with_interval_delay(with_save(scrctrl.inc_purity_on_selected)))
+        sig(walliser.DECREMENT_PURITY,
+            with_interval_delay(with_save(scrctrl.dec_purity_on_selected)))
 
-        keypress(curses.KEY_RESIZE, scrctrl.update_ui)
+    def update_wallpapers(self):
+        self.screen_controller.next()
+        self.set_timeout(self.interval_delay, self.update_wallpapers)
 
-        keypress('n', with_interval_reset(scrctrl.next))
-        keypress('b', with_interval_reset(scrctrl.prev))
-        keypress('x', with_interval_reset(scrctrl.cycle_screens))
+    def increase_interval_delay(self):
+        """Reduce wallpaper rotation speed by a quarter second."""
+        # self.interval_delay *= 1.1
+        self.interval_delay += 0.25
+        self.ui.update_interval_delay(self.interval_delay)
 
-        keypress('-', self.reduce_interval_delay)
-        keypress('+', self.increase_interval_delay)
-
-        keypress('tab', scrctrl.select_next)
-        keypress('↓',   scrctrl.select_next)
-        keypress('↑',   scrctrl.select_prev)
-        keypress(' ',   scrctrl.pause_unpause_selected)
-
-        keypress('a', with_interval_reset(scrctrl.next_on_selected))
-        keypress('q', with_interval_reset(scrctrl.prev_on_selected))
-        keypress('→', with_interval_reset(scrctrl.next_on_selected))
-        keypress('←', with_interval_reset(scrctrl.prev_on_selected))
-
-        keypress('w', with_interval_delay(
-                          with_config_save(
-                              scrctrl.inc_rating_on_selected
-                      )))
-        keypress('s', with_interval_delay(
-                          with_config_save(
-                              scrctrl.dec_rating_on_selected
-                      )))
-        keypress('d', with_interval_delay(
-                          with_config_save(
-                              scrctrl.inc_purity_on_selected
-                      )))
-        keypress('e', with_interval_delay(
-                          with_config_save(
-                              scrctrl.dec_purity_on_selected
-                      )))
+    def reduce_interval_delay(self):
+        """Increase wallpaper rotation speed by a quarter second."""
+        # self.interval_delay *= 1/1.1
+        self.interval_delay -= 0.25
+        self.ui.update_interval_delay(self.interval_delay)
 
     def set_timeout(self, delay, fn):
         self.timeout_callbacks[fn] = time() + delay
@@ -169,25 +142,18 @@ class Core:
             time() + min_delay
         )
 
+    def interrupt(self, *_):
+        self.interrupted = True
+
     def run_event_loop(self):
-        """Start the event loop processing Ui events.
-        This method logs thread internal Exceptions.
-        """
-        # wait n/10 seconds on getch(), then return ERR
-        curses.halfdelay(1)
+        """Start processing Ui events."""
         self.interrupted = False
         while not self.interrupted:
-            char = self.ui.root_win.getch()
-            if char != curses.ERR:
-                self.ui.process_keypress_listeners(char)
-            # using else so we can iterate through continuous input faster
-            else:
+            if not self.ui.process_keypress_listeners():
+                # only do this when no input processing happened so
+                # continuous input can be processed smoothly
                 now = time()
                 for fn, t in self.timeout_callbacks.copy().items():
                     if now > t:
                         del self.timeout_callbacks[fn]
                         fn()
-
-    def interrupt(self, *_):
-        self.interrupted = True
-

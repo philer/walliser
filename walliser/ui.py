@@ -7,6 +7,31 @@ from datetime import timedelta
 
 from .util import Observable, observed
 from .screen import Screen
+import walliser
+
+keys_to_signals = {
+    curses.KEY_RESIZE: walliser.UI_RESIZE,
+    27:                walliser.QUIT, # esc
+    '^Q':              walliser.QUIT,
+    '^S':              walliser.SAVE,
+    'n':               walliser.NEXT,
+    'b':               walliser.PREV,
+    'x':               walliser.CYCLE_SCREENS,
+    '-':               walliser.INCREASE_DELAY,
+    '+':               walliser.REDUCE_DELAY,
+    ord('\t'):         walliser.NEXT_SCREEN, # tab
+    curses.KEY_DOWN:   walliser.NEXT_SCREEN,
+    curses.KEY_UP:     walliser.PREV_SCREEN,
+    curses.KEY_RIGHT:  walliser.NEXT_ON_SCREEN,
+    curses.KEY_LEFT:   walliser.PREV_ON_SCREEN,
+    ' ':               walliser.TOGGLE_SCREEN,
+    'a':               walliser.NEXT_ON_SCREEN,
+    'q':               walliser.PREV_ON_SCREEN,
+    'w':               walliser.INCREMENT_RATING,
+    's':               walliser.DECREMENT_RATING,
+    'd':               walliser.INCREMENT_PURITY,
+    'e':               walliser.DECREMENT_PURITY,
+}
 
 def right_pad(length, string, character=" "):
     """Extends string to given length by adding padding characters if necessary.
@@ -127,24 +152,8 @@ class Ui:
 
     SCREEN_WINDOW_MAX_HEIGHT = 2
 
-    # HEADER_TEMPLATE = ("Found {wallpaper_count:d} wallpapers,"
-    #                    " updating every {interval_delay:.3} seconds on"
-    #                    " {screen_count:d} screens"
-    #                    " ({total_run_time:s} total)"
-    #                 )
-
-    KEYMAP = {
-        "↑":   curses.KEY_UP,
-        "→":   curses.KEY_RIGHT,
-        "↓":   curses.KEY_DOWN,
-        "←":   curses.KEY_LEFT,
-        "tab": ord('\t'),
-        "esc": 27,
-    }
-    KEYMAP_INVERTED = {v:k for k,v in KEYMAP.items()}
-
     def __init__(self):
-        self.key_listeners = dict()
+        self.signal_listeners = dict()
 
         self.header_string = ""
         self.footer_string = ""
@@ -195,7 +204,7 @@ class Ui:
         curses.curs_set(0)
 
         # wait n/10 seconds on getch(), then return ERR
-        # curses.halfdelay(1)
+        curses.halfdelay(1)
         # self.root_win.nodelay(1)
 
     def exit_curses(self):
@@ -207,35 +216,37 @@ class Ui:
         curses.endwin()
 
 
-    def process_keypress_listeners(self, char):
-        # # char = self.root_win.getch()
-        # if char == curses.ERR:
-        #     return False
-        key = curses.keyname(char).decode("utf-8")
-        # self.info("pressed key '{:s}' ({:d})".format(key, char))
+    def process_keypress_listeners(self):
+        char = self.root_win.getch()
+        if char == curses.ERR:
+            return False
         if char == curses.KEY_RESIZE:
             self.layout()
             self.refresh_header()
             # Not responsible for body content here, done via listener
-        try:
-            for listener in self.key_listeners[char]:
-                listener()
-        except KeyError:
-            pass
-        try:
-            for listener in self.key_listeners[key]:
-                listener()
-        except KeyError:
-            pass
 
-    def on_keypress(self, key, callback):
-        if key in self.KEYMAP:
-            key = self.KEYMAP[key]
-        if key in self.key_listeners:
-            self.key_listeners[key].append(callback)
-        else:
-            self.key_listeners[key] = [callback]
+        try:
+            signal = keys_to_signals[char]
+        except KeyError:
+            try:
+                key = curses.keyname(char).decode("utf-8")
+                signal = keys_to_signals[key]
+            except KeyError:
+                return False
+        try:
+            listeners = self.signal_listeners[signal]
+        except KeyError:
+            return False
 
+        for listener in listeners:
+                listener()
+        return True
+
+    def on_signal(self, signal, callback):
+        try:
+            self.signal_listeners[signal].append(callback)
+        except KeyError:
+            self.signal_listeners[signal] = [callback]
 
     def layout(self):
         """Hardcoded ui layout.
