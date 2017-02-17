@@ -8,7 +8,7 @@ from .core import Core
 from .config import Config
 from .wallpaper import set_wallpapers
 # from .maintenance import find_duplicates, convert_to_hash_keys
-from .util import error, die
+# from .util import error, die
 
 def main():
     """Parse command line arguments recognized by this module."""

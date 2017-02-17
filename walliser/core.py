@@ -6,21 +6,16 @@ from time import time
 import signal
 import curses
 
-from .util import Observable, observed
-from .config import Config
-from .wallpaper import Wallpaper, WallpaperController
-from .screen import Screen, ScreenController
+from .wallpaper import WallpaperController
+from .screen import ScreenController
 from .ui import Ui
-
-
-stats = {"saved_wallpapers": 0}
-
 
 class Core:
     """Main entry point to the application, manages run loops."""
 
     def __init__(self, config, args):
         self.config = config
+        self.stats = {"saved_wallpapers": 0}
 
         self.interval_delay = args.interval_delay
         self.timeout_callbacks = {}
@@ -56,11 +51,11 @@ class Core:
         ]
         self.config.save()
 
-        stats["saved_wallpapers"] += updates_count
+        self.stats["saved_wallpapers"] += updates_count
         print("{:d} entr{:s} saved ({:d} total)".format(
             updates_count,
             "y" if updates_count == 1 else "ies",
-            stats["saved_wallpapers"]
+            self.stats["saved_wallpapers"]
         ))
 
     def increase_interval_delay(self):

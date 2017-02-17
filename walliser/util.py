@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import sys
-
 import hashlib
-
 from time import time
-
 from functools import wraps
-
 
 def exhaust(iterator):
     """Do nothing with every element of an iterator."""

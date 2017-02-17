@@ -77,11 +77,41 @@ def purity_as_string(purity, length=5):
     return rating_string(purity, length,
         negative="♥", negative_bg="♡", positive="~", positive_bg="♡")
 
+def screen_to_line(screen):
+    """The shortest possible user friendly description of a wallpaper."""
+    return ("{selected:s} {idx:d}{current_or_paused:s}"
+            " [{rating:s}][{purity:s}] {url:s}").format(
+        idx=screen.idx + 1,
+        selected="»" if screen.selected else " ",
+        current_or_paused="*" if screen.current else
+                          "P" if screen.paused else " ",
+        rating=rating_as_string(screen.current_wallpaper.rating, 2),
+        purity=purity_as_string(screen.current_wallpaper.purity, 2),
+        url=screen.current_wallpaper.url,
+    )
+
+def screen_to_multiline(screen):
+    """Double-line user friendly description of a wallpaper."""
+    return ("{selected:s} {idx:d}{current:s}"
+            "[{rating:s}][{purity:s}] {format:s} {width:d}x{height:d}"
+            " {paused:s}\n{url:s}").format(
+        idx=screen.idx + 1,
+        selected="»" if screen.selected else " ",
+        current="*" if screen.current else " ",
+        paused="paused" if screen.paused else "      ",
+        rating=rating_as_string(screen.current_wallpaper.rating, 5),
+        purity=purity_as_string(screen.current_wallpaper.purity, 5),
+        width=screen.current_wallpaper.width,
+        height=screen.current_wallpaper.height,
+        format=screen.current_wallpaper.format,
+        url=screen.current_wallpaper.url,
+    )
+
 
 class StdOutWrapper(Observable):
 
     def __init__(self):
-        super(StdOutWrapper, self).__init__()
+        super().__init__()
         self.text = ""
 
     @observed
@@ -291,8 +321,10 @@ class Ui:
         self.refresh_header()
 
     def update_screen(self, screen):
-        self.screen_strings[screen.idx] = self.screen_to_string(screen,
-            self.screen_window_height == 1)
+        if self.screen_window_height == 1:
+            self.screen_strings[screen.idx] = screen_to_line(screen)
+        else:
+            self.screen_strings[screen.idx] = screen_to_multiline(screen)
 
         win = self.screen_windows[screen.idx]
         if screen.selected:
@@ -316,39 +348,3 @@ class Ui:
         win.erase()
         win.insstr(crop(height, width, string))
         win.refresh()
-
-    def screen_to_string(self, screen, compact=0):
-        if compact:
-            return self.screen_to_line(screen)
-        else:
-            return self.screen_to_multiline(screen)
-
-    def screen_to_line(self, screen):
-        """The shortest possible user friendly description of a wallpaper."""
-        return ("{selected:s} {idx:d}{current_or_paused:s}"
-                " [{rating:s}][{purity:s}] {url:s}").format(
-            idx=screen.idx + 1,
-            selected="»" if screen.selected else " ",
-            current_or_paused="*" if screen.current else
-                              "P" if screen.paused else " ",
-            rating=rating_as_string(screen.current_wallpaper.rating, 2),
-            purity=purity_as_string(screen.current_wallpaper.purity, 2),
-            url=screen.current_wallpaper.url,
-        )
-
-    def screen_to_multiline(self, screen):
-        """Double-line user friendly description of a wallpaper."""
-        return ("{selected:s} {idx:d}{current:s}"
-                "[{rating:s}][{purity:s}] {format:s} {width:d}x{height:d}"
-                " {paused:s}\n{url:s}").format(
-            idx=screen.idx + 1,
-            selected="»" if screen.selected else " ",
-            current="*" if screen.current else " ",
-            paused="paused" if screen.paused else "      ",
-            rating=rating_as_string(screen.current_wallpaper.rating, 5),
-            purity=purity_as_string(screen.current_wallpaper.purity, 5),
-            width=screen.current_wallpaper.width,
-            height=screen.current_wallpaper.height,
-            format=screen.current_wallpaper.format,
-            url=screen.current_wallpaper.url,
-        )
