@@ -99,7 +99,7 @@ class Wallpaper(Observable):
         self.tags = tags if tags is not None else []
 
     def __repr__(self):
-        return self.path
+        return self.__class__.__name__ + ":" + self.path
 
     def __eq__(self, other):
         if isinstance(other, Wallpaper):

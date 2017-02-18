@@ -3,63 +3,81 @@
 import subprocess
 
 from .wallpaper import show_wallpapers
-from .util import Observable, observed, modlist, each
+from .util import Observable, observed, steplist, modlist, each
+
+def get_screen_count():
+    """Finds out the number of connected screens."""
+    # this is kind of a hack...
+    return (
+        subprocess
+            .check_output(["xrandr", "-q"])
+            .decode("ascii")
+            .count(" connected ")
+    )
 
 class Screen(Observable):
     """Model representing one (usually physical) monitor"""
 
     @property
     def current_wallpaper(self):
-        return self.wallpapers[self._current_wallpaper_offset]
+        return self._wallpapers.current
 
     @property
-    def current(self):
-        return self._current
+    def is_current(self):
+        return self._is_current
 
-    @current.setter
+    @is_current.setter
     @observed
-    def current(self, current):
-        self._current = current
+    def is_current(self, current):
+        self._is_current = current
 
     @property
-    def selected(self):
-        return self._selected
+    def is_selected(self):
+        return self._is_selected
 
-    @selected.setter
+    @is_selected.setter
     @observed
-    def selected(self, selected):
-        self._selected = selected
+    def is_selected(self, selected):
+        self._is_selected = selected
 
     @property
-    def paused(self):
-        return self._paused
+    def is_paused(self):
+        return self._is_paused
 
-    @paused.setter
+    @is_paused.setter
     @observed
-    def paused(self, paused):
-        self._paused = paused
+    def is_paused(self, paused):
+        self._is_paused = paused
 
     def __init__(self, idx, wallpapers,
-                 current=False, selected=False, paused=False):
+                 is_current=False, is_selected=False, is_paused=False):
         super().__init__()
         self.idx = idx
-        self.wallpapers = wallpapers
-        self._current_wallpaper_offset = 0
-        self._current = current
-        self._selected = selected
-        self._paused = paused
-
+        self._wallpapers = wallpapers
+        self._is_current = is_current
+        self._is_selected = is_selected
+        self._is_paused = is_paused
         self.current_wallpaper.subscribe(self)
 
     def __repr__(self):
-        return "screen:" + str(self.idx)
+        return self.__class__.__name__ + ":" + str(self.idx)
+
+    def __int__(self):
+        return self.idx
+
+    def __index__(self):
+        return self.idx
 
     @observed
-    def cycle_wallpaper(self, offset):
-        self.current_wallpaper.unsubscribe(self)
-        self._current_wallpaper_offset += offset
-        self.current_wallpaper.show(self.idx)
-        self.current_wallpaper.subscribe(self)
+    def notify(self, *_):
+        pass
+
+    @observed
+    def cycle_wallpaper(self, by):
+        self._wallpapers.current.unsubscribe(self)
+        self._wallpapers.cycle(by)
+        self._wallpapers.current.show(self.idx)
+        self._wallpapers.current.subscribe(self)
 
     def next_wallpaper(self):
         self.cycle_wallpaper(1)
@@ -76,58 +94,34 @@ class ScreenController:
     """Manage available screens, cycling through them, pausing etc."""
 
     @property
-    def current_screen(self):
-        """Returns last (automatically) updated screen."""
-        if self.active_screens:
-            return self.active_screens[self._current_screen_offset]
-
-    @property
     def selected_screen(self):
         """Return selected screen. If none is selected select current_screen."""
-        return self._selected_screen
-
-    @selected_screen.setter
-    def selected_screen(self, selected_screen):
-        """Return selected screen. If none is selected select current_screen."""
-        self._selected_screen.selected = False
-        self._selected_screen = selected_screen
-        self._selected_screen.selected = True
+        return self.selectable_screens.current
 
     def __init__(self, ui, wallpaper_controller):
         self.ui = ui
         self.wallpaper_controller = wallpaper_controller
 
-        screen_count = self._get_screen_count()
+        screen_count = get_screen_count()
         if not screen_count:
             raise Exception("No screens found.")
         self.screen_count = screen_count
         self.ui.update_screen_count(screen_count)
+
         self.screens = []
         for idx in range(screen_count):
-            wallpapers = modlist(
-                self.wallpaper_controller.wallpapers,
-                screen_count,
-                idx)
+            wallpapers = modlist(steplist(self.wallpaper_controller.wallpapers,
+                                          step=screen_count, offset=idx))
             screen = Screen(idx, wallpapers)
             screen.subscribe(ui)
             ui.update_screen(screen)
             self.screens.append(screen)
 
         self.active_screens = modlist(self.screens[:])
-        self._current_screen_offset = 0
-        self.current_screen.current = True
-        self._selected_screen = self.screens[0]
-        self._selected_screen.selected = True
+        self.active_screens.current.is_current = True
 
-    def _get_screen_count(self):
-        """Finds out the number of connected screens."""
-        # this is kind of a hack...
-        return (
-            subprocess
-                .check_output(["xrandr", "-q"])
-                .decode("ascii")
-                .count(" connected ")
-        )
+        self.selectable_screens = modlist(self.screens)
+        self.selectable_screens.current.is_selected = True
 
     def update_ui(self, *_):
         """Update the moving parts of the UI that we can influence."""
@@ -138,75 +132,71 @@ class ScreenController:
 
     def cycle_screens(self):
         """Shift entire screens array by one position."""
+        self.selectable_screens.current.is_selected = False
         for screen in self.screens:
             screen.idx = (screen.idx + 1) % self.screen_count
         self.screens = self.screens[1:] + self.screens[0:1]
+        self.selectable_screens = modlist(self.screens,
+                                          self.selectable_screens.position)
+        self.selectable_screens.current.is_selected = True
         self._update_active_screens()
-        self.select_prev()
         self.update_ui()
         self.show_wallpapers()
 
     def next(self):
         """Cycle forward in the global wallpaper rotation."""
-        current = self.current_screen
-        if current:
-            current.current = False
-            self._current_screen_offset += 1
-            self.current_screen.current = True
-            self.current_screen.next_wallpaper()
+        try:
+            self.active_screens.current.is_current = False
+            self.active_screens.next()
+            self.active_screens.current.is_current = True
+            self.active_screens.current.next_wallpaper()
+        except IndexError:
+            pass
+
     def prev(self):
         """Cycle backward in the global wallpaper rotation."""
-        current = self.current_screen
-        if current:
-            current.prev_wallpaper()
-            self.current_screen.current = False
-            self._current_screen_offset -= 1
-            self.current_screen.current = True
+        try:
+            self.active_screens.current.prev_wallpaper()
+            self.active_screens.current.is_current = False
+            self.active_screens.prev()
+            self.active_screens.current.is_current = True
+        except IndexError:
+            pass
 
     def select(self, scr):
-        """Flexible input setter for selected_screen"""
-        if isinstance(scr, Screen):
-            idx = scr.idx
-        elif isinstance(scr, int):
-            idx = scr
-        elif isinstance(scr, str):
-            idx = int(scr) - 1
-        else:
-            raise TypeError()
-        # We rely on the @property setter
-        self.selected_screen = self.screens[idx]
+        self.selectable_screens.current.is_selected = False
+        self.selectable_screens.position = int(scr)
+        self.selectable_screens.current.is_selected = True
 
     def select_next(self):
-        """Advance the selected screen to the next of all screens."""
-        # We rely on the @property getter/setter
-        idx = self.selected_screen.idx
-        self.selected_screen = self.screens[(idx + 1) % self.screen_count]
+        self.select(self.selected_screen.idx + 1)
 
     def select_prev(self):
-        """Advance the selected screen to the next of all screens."""
-        # We rely on the @property getter/setter
-        idx = self.selected_screen.idx
-        self.selected_screen = self.screens[(idx - 1) % self.screen_count]
+        self.select(self.selected_screen.idx - 1)
 
     def pause_selected(self):
-        self.selected_screen.paused = True
+        self.selected_screen.is_paused = True
         self._update_active_screens()
 
     def unpause_selected(self):
-        self.selected_screen.paused = False
+        self.selected_screen.is_paused = False
         self._update_active_screens()
 
     def pause_unpause_selected(self):
-        self.selected_screen.paused = not self.selected_screen.paused
+        self.selected_screen.is_paused = not self.selected_screen.is_paused
         self._update_active_screens()
 
     def _update_active_screens(self):
         """Regenerate the list of screens used in global wallpaper rotation."""
-        if self.current_screen:
-            self.current_screen.current = False
-        active_screens = [s for s in self.screens if not s.paused]
-        if active_screens:
-            self.active_screens = modlist(active_screens)
-            self.current_screen.current = True
-        else:
-            self.active_screens = []
+        try:
+            self.active_screens.current.is_current = False
+        except IndexError:
+            pass
+        self.active_screens = modlist(
+            (s for s in self.screens if not s.is_paused),
+            self.active_screens.position
+        )
+        try:
+            self.active_screens.current.is_current = True
+        except IndexError:
+            pass

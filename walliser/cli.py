@@ -54,7 +54,7 @@ def main():
         type=str,
         default="r >= 0",
     )
-    parser.add_argument("--read-only",
+    parser.add_argument("--readonly",
         help="Use this flag to prevent any changes to the config file.",
         dest="readonly",
         action='store_true'

@@ -15,8 +15,8 @@ keys_to_signals = {
     27:                walliser.QUIT, # esc
     '^Q':              walliser.QUIT,
     '^S':              walliser.SAVE,
-    'n':               walliser.NEXT,
-    'b':               walliser.PREV,
+    'n':               walliser.PREV,
+    'm':               walliser.NEXT,
     'x':               walliser.CYCLE_SCREENS,
     '-':               walliser.INCREASE_DELAY,
     '+':               walliser.REDUCE_DELAY,
@@ -44,15 +44,11 @@ def right_pad(length, string, character=" "):
 
 def crop(lines, columns, string, ellipsis="…"):
     """Shortens string to given maximum length and adds ellipsis if it does."""
-    # Expressions in Python are fun O.O
     return "\n".join(
         line[ 0 : columns - len(ellipsis) ] + ellipsis
         if len(line) > columns else line
         for line in string.split("\n")[0:lines]
     )
-    # if len(string) > length:
-        # return string[0 : length - len(ellipsis) ] + ellipsis
-    # return string
 
 
 def rating_string(value, length=5, *, positive="+", negative="-",
@@ -109,9 +105,9 @@ def screen_to_line(screen):
     wp = screen.current_wallpaper
     return ("{selected}{current_or_paused}"
             "[{rating}][{purity}] {url}").format(
-        selected="│" if screen.selected else " ",
-        current_or_paused="⏵" if screen.current else
-                          "⏸" if screen.paused else
+        selected="│" if screen.is_selected else " ",
+        current_or_paused="⏵" if screen.is_current else
+                          "⏸" if screen.is_paused else
                           " ",
         rating=rating_as_string(wp.rating, 2),
         purity=purity_as_string(wp.purity, 2),
@@ -127,11 +123,11 @@ def screen_to_multiline(screen):
             "[{rating}][{purity}] {format} {width:d}×{height:d}"
             " {tags}"
             "\n{selected}{url}").format(
-        selected="│" if screen.selected else " ",
-        # current="⏵" if screen.current else " ",
-        # paused="paused" if screen.paused else "",
-        current_or_paused="⏵" if screen.current else
-                          "⏸" if screen.paused else
+        selected="│" if screen.is_selected else " ",
+        # current="⏵" if screen.is_current else " ",
+        # paused="paused" if screen.is_paused else "",
+        current_or_paused="⏵" if screen.is_current else
+                          "⏸" if screen.is_paused else
                           " ",
         rating=rating_as_string(wp.rating, 5),
         purity=purity_as_string(wp.purity, 5),
@@ -164,6 +160,8 @@ class Ui:
 
     def __init__(self):
         self.signal_listeners = dict()
+        self.curses_colors = dict()
+
 
         self.header_string = ""
         self.footer_string = ""
@@ -195,20 +193,21 @@ class Ui:
         os.environ.setdefault('ESCDELAY', '25')
 
         self.root_win = curses.initscr()
+        # Start color, too.  Harmless if the terminal doesn't have
+        # color; user can test with has_color() later on.  The try/catch
+        # works around a minor bit of over-conscientiousness in the curses
+        # module -- the error return from C start_color() is ignorable.
+        try:
+            curses.start_color()
+        except:
+            pass
+        else:
+            curses.use_default_colors()
+
 
         curses.noecho()
         curses.raw()
         self.root_win.keypad(1)
-
-        # # Start color, too.  Harmless if the terminal doesn't have
-        # # color; user can test with has_color() later on.  The try/catch
-        # # works around a minor bit of over-conscientiousness in the curses
-        # # module -- the error return from C start_color() is ignorable.
-        # try:
-        #     start_color()
-        # except:
-        #     pass
-        # curses.use_default_colors()
 
         # hide cursor
         curses.curs_set(0)
@@ -236,6 +235,16 @@ class Ui:
         curses.curs_set(0)
         self.update_header()
         return input.decode("utf-8")
+
+    def ansi_color(self, fg=-1, bg=-1):
+        try:
+            return self.curses_colors[fg,bg]
+        except KeyError:
+            n = 9 + len(self.curses_colors)
+            curses.init_pair(n, fg, bg)
+            color = curses.color_pair(n)
+            self.curses_colors[fg,bg] = color
+            return color
 
     def process_keypress_listeners(self):
         char = self.root_win.getch()
@@ -278,35 +287,38 @@ class Ui:
         """Hardcoded ui layout.
         Call whenever window sizes need recalculating.
         """
-        self.root_win.erase()
+        try:
+            self.root_win.erase()
 
-        (height, width) = self.root_win.getmaxyx()
-        self.width = width # used by updates
+            (height, width) = self.root_win.getmaxyx()
+            self.width = width # used by updates
 
-        if height > 2:
-            header_height = 2
-            self.header_window = self.root_win.subwin(1, width, 0, 0)
-            self.root_win.insstr(1, 0, "─" * width)
-            self.update_header()
-        else:
-            header_height = 0
+            if height > 2:
+                header_height = 2
+                self.header_window = self.root_win.subwin(1, width, 0, 0)
+                self.root_win.insstr(1, 0, "─" * width, self.ansi_color(243))
+                self.update_header()
+            else:
+                header_height = 0
 
-        body_height = height - header_height
-        body = self.root_win.subwin(body_height, width, header_height, 0)
+            body_height = height - header_height
+            body = self.root_win.subwin(body_height, width, header_height, 0)
 
-        self.screen_windows = []
-        if self.screen_count:
-            self.screen_window_height = min(
-                body_height // self.screen_count,
-                Ui.MAX_SCREEN_WINDOW_HEIGHT
-            )
-            for idx in range(self.screen_count):
-                self.screen_windows.append(body.derwin(
-                    self.screen_window_height,
-                    width,
-                    idx * self.screen_window_height,
-                    0
-                ))
+            self.screen_windows = []
+            if self.screen_count:
+                self.screen_window_height = min(
+                    body_height // self.screen_count,
+                    Ui.MAX_SCREEN_WINDOW_HEIGHT
+                )
+                for idx in range(self.screen_count):
+                    self.screen_windows.append(body.derwin(
+                        self.screen_window_height,
+                        width,
+                        idx * self.screen_window_height,
+                        0
+                    ))
+        except curses.error:
+            pass
 
     def notify(self, obj, method, *args):
         if isinstance(obj, Screen):
@@ -364,7 +376,7 @@ class Ui:
             self.screen_strings[screen.idx] = screen_to_multiline(screen)
 
         win = self.screen_windows[screen.idx]
-        if screen.selected:
+        if screen.is_selected:
             win.bkgd(' ', curses.A_BOLD) #curses.A_REVERSE
         else:
             win.bkgd(' ', curses.A_NORMAL)

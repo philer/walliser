@@ -100,7 +100,7 @@ class Core:
             self.set_timeout(10, self.save_config)
 
         def toggle_tag(input):
-            if input
+            if input:
                 self.selected_wallpaper.toggle_tag(input)
                 self.set_timeout(10, self.save_config)
             self.extend_timeout(3, self.update_wallpapers)
