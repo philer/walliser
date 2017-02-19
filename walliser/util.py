@@ -14,6 +14,10 @@ def each(function, *iterators):
     """Like map() but runs immediately and returns nothing."""
     exhaust(map(function, *iterators))
 
+def clamp(min, max, val):
+    """Combination of min and max."""
+    return min if val < min else max if val > max else val
+
 
 class modlist:
     """Store a current position and allow cycling."""

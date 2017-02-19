@@ -6,7 +6,7 @@ import curses
 from inspect import signature
 from datetime import timedelta
 
-from .util import Observable, observed
+from .util import Observable, observed, clamp
 from .screen import Screen
 import walliser
 
@@ -178,7 +178,7 @@ class Ui:
         self.stdout_wrapper.subscribe(self)
         self.init_curses()
         sys.stdout = self.stdout_wrapper
-        self.layout()
+        # self.layout()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -286,38 +286,30 @@ class Ui:
         """Hardcoded ui layout.
         Call whenever window sizes need recalculating.
         """
-        try:
-            self.root_win.erase()
+        height, width = self.root_win.getmaxyx()
+        self.width = width
+        header_height = clamp(0, 2, height - self.screen_count)
+        self.screen_window_height = screen_window_height = clamp(
+                0,
+                self.screen_count * Ui.MAX_SCREEN_WINDOW_HEIGHT,
+                height - header_height
+            ) // self.screen_count
 
-            (height, width) = self.root_win.getmaxyx()
-            self.width = width # used by updates
-
-            if height > 2:
-                header_height = 2
-                self.header_window = self.root_win.subwin(1, width, 0, 0)
+        self.root_win.erase()
+        if header_height:
+            self.header_window = self.root_win.subwin(1, width, 0, 0)
+            self.update_header()
+            if header_height > 1:
                 self.root_win.insstr(1, 0, "─" * width, self.ansi_color(243))
-                self.update_header()
-            else:
-                header_height = 0
 
-            body_height = height - header_height
-            body = self.root_win.subwin(body_height, width, header_height, 0)
-
-            self.screen_windows = []
-            if self.screen_count:
-                self.screen_window_height = min(
-                    body_height // self.screen_count,
-                    Ui.MAX_SCREEN_WINDOW_HEIGHT
-                )
-                for idx in range(self.screen_count):
-                    self.screen_windows.append(body.derwin(
-                        self.screen_window_height,
-                        width,
-                        idx * self.screen_window_height,
-                        0
-                    ))
-        except curses.error:
-            pass
+        self.screen_windows = []
+        for idx in range(min(self.screen_count, height)):
+            self.screen_windows.append(self.root_win.subwin(
+                screen_window_height,
+                width,
+                idx * screen_window_height + header_height,
+                0
+            ))
 
     def notify(self, obj, method, *args):
         if isinstance(obj, Screen):
@@ -349,9 +341,9 @@ class Ui:
     def update_header(self):
         if not self.screen_count:
             return
-        run_time = (
-            self.wallpaper_count * self.interval_delay / self.screen_count)
-
+        run_time = (self.wallpaper_count * self.interval_delay
+                                         / self.screen_count)
+        _, width = self.root_win.getmaxyx()
         text = (
                 "{wallpaper_count:d} wallpapers ⋮ "
                 "{screen_count:d} screens ⋮ "
@@ -363,18 +355,21 @@ class Ui:
                 screen_count=self.screen_count,
                 run_time=str(timedelta(seconds=int(run_time))),
             )
-        text += (" " * (self.width - len(text) - len(self.info_string))
-               + self.info_string)
+        text += "{: >{}s}".format(self.info_string, width - len(text))
         self.header_string = text
         self.refresh_header()
 
     def update_screen(self, screen):
-        if self.screen_window_height == 1:
-            self.screen_strings[screen.idx] = screen_to_line(screen)
-        else:
-            self.screen_strings[screen.idx] = screen_to_multiline(screen)
+        try:
+            win = self.screen_windows[screen.idx]
+        except IndexError:
+            return
 
-        win = self.screen_windows[screen.idx]
+        if self.screen_window_height > 1:
+            self.screen_strings[screen.idx] = screen_to_multiline(screen)
+        else:
+            self.screen_strings[screen.idx] = screen_to_line(screen)
+
         if screen.is_selected:
             win.bkgd(' ', curses.A_BOLD) #curses.A_REVERSE
         else:
