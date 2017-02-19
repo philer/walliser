@@ -212,8 +212,6 @@ class Ui:
         # hide cursor
         curses.curs_set(0)
 
-        # wait n/10 seconds on getch(), then return ERR
-        curses.halfdelay(1)
         # self.root_win.nodelay(1)
 
     def exit_curses(self):
@@ -224,7 +222,7 @@ class Ui:
         curses.echo()
         curses.endwin()
 
-    def input(self, prompt="❭ "):
+    def input(self, prompt="> "):
         self.header_window.erase()
         self.header_window.addstr(0, 0, prompt)
         self.header_window.refresh()
@@ -247,7 +245,10 @@ class Ui:
             return color
 
     def process_keypress_listeners(self):
+        # wait n/10 seconds on getch(), then return ERR
+        curses.halfdelay(1)
         char = self.root_win.getch()
+
         if char == curses.ERR:
             return False
         if char == curses.KEY_RESIZE:
@@ -269,8 +270,6 @@ class Ui:
             return False
 
         args = {"signal": signal, "char": char, "key": key}
-        if signal in walliser.input_signals:
-            args["input"] = self.input().strip()
         for listener in listeners:
                 listener[0](**{key: args[key] for key in listener[1:] if key in args})
         return True

@@ -99,9 +99,10 @@ class Core:
             self.extend_timeout(3, self.update_wallpapers)
             self.set_timeout(10, self.save_config)
 
-        def toggle_tag(input):
-            if input:
-                self.selected_wallpaper.toggle_tag(input)
+        def toggle_tag():
+            tags = self.ui.input("tags: ")
+            for tag in filter(None, map(str.strip, tags.split(','))):
+                self.selected_wallpaper.toggle_tag(tag)
                 self.set_timeout(10, self.save_config)
             self.extend_timeout(3, self.update_wallpapers)
 
