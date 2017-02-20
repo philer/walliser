@@ -2,8 +2,9 @@
 
 import signal
 
-from .util import get_file_hash, info, warning, error, die, progress_bar
 from .config import Config
+from .ui import info, warning, error, die, progress_bar
+from .util import get_file_hash
 
 def convert_to_hash_keys(config):
     """Restructure config.wallpapers to use hashes as keys instead of paths"""

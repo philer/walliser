@@ -2,7 +2,6 @@
 
 import sys
 import hashlib
-from time import time
 from functools import wraps
 
 def exhaust(iterator):
@@ -17,6 +16,20 @@ def each(function, *iterators):
 def clamp(min, max, val):
     """Combination of min and max."""
     return min if val < min else max if val > max else val
+
+def crop(lines, columns, string, ellipsis="…"):
+    """Shortens string to given maximum length and adds ellipsis if it does."""
+    return "\n".join(
+        line[ 0 : columns - len(ellipsis) ] + ellipsis
+        if len(line) > columns else line
+        for line in string.split("\n")[0:lines]
+    )
+
+def right_pad(length, string, character=" "):
+    """Extends string to given length by adding padding characters if necessary.
+    If string is longer than length it will be shortened to length.
+    """
+    return string[0:length] + character * (length - len(string))
 
 
 class modlist:
@@ -125,6 +138,7 @@ def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):
     return hasher.hexdigest()
     # return base64.b64encode(hasher.digest()).decode("utf-8")
 
+
 ### CLI helpers ###
 
 # ANSI escape sequences used to style and control output on the terminal (TTY)
@@ -150,7 +164,6 @@ def die(message="Exiting…"):
     sys.exit(1)
 
 
-
 def progress_bar(total=100,
                  prefix="", fill="█", sep="", background="░", suffix="",
                  *, output=sys.stderr, width=80, interval=0.066):
@@ -160,7 +173,6 @@ def progress_bar(total=100,
 
     lastrun = time()
     state = 0
-
     def update(progress=None, after=""):
         nonlocal state
         if progress is None:
