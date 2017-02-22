@@ -12,7 +12,10 @@ from datetime import datetime
 
 from PIL import Image
 
-from .util import Observable, observed, get_file_hash, info, warning, die
+from .util import (Observable, observed,
+                   get_file_hash,
+                   info, warning, die,
+                   progress_spinner, progress_bar)
 
 def set_wallpaper_paths(wallpaper_paths):
     """Low level wallpaper setter using feh"""
@@ -32,25 +35,23 @@ def show_wallpaper(screen_index, wallpaper):
     set_wallpaper_paths((wp.path for wp in live_wallpapers))
 
 
-
 def find_images(patterns):
     """Returns an iterable of wallpaper paths matching the given pattern(s).
     Doesn't clear duplicates (use a set).
     """
+    spinner = progress_spinner()
     for pattern in patterns:
         pattern = os.path.expanduser(pattern)
         for path in glob(pattern):
             if os.path.isfile(path):
+                spinner(path)
                 yield os.path.realpath(path)
             else:
-                yield from images_in_dir(path)
-
-
-def images_in_dir(root_dir):
-    """Helper function to get a list of all wallpapers in a directory"""
-    for directory, _, files in os.walk(root_dir):
-        for f in files:
-            yield os.path.realpath(os.path.join(directory, f))
+                for directory, _, files in os.walk(path):
+                    for f in files:
+                        img_path = os.path.realpath(os.path.join(directory, f))
+                        spinner(img_path)
+                        yield img_path
 
 
 class Wallpaper(Observable):
@@ -201,7 +202,10 @@ class WallpaperController:
         known_paths = {path: hash for hash, data in config_data.items()
                                     for path in data["paths"] }
         now = datetime.now().strftime(Wallpaper.TIME_FORMAT)
-        for path in find_images(sources):
+        images = list(find_images(sources))
+        bar = progress_bar(len(images))
+        for path in images:
+            bar(after_text="processing " + path)
             if path in known_paths:
                 hash = known_paths[path]
                 data = config_data[hash]

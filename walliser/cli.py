@@ -62,15 +62,18 @@ def main():
 
     args = parser.parse_args()
 
-    if args.config_file:
-        config_file = args.config_file
-    elif 'WALLISER_DATABASE_FILE' in os.environ:
-        config_file = os.environ['WALLISER_DATABASE_FILE']
-    else:
-        config_file = os.environ['HOME'] + "/.walliser.json.gz"
+    try:
+        if args.config_file:
+            config_file = args.config_file
+        elif 'WALLISER_DATABASE_FILE' in os.environ:
+            config_file = os.environ['WALLISER_DATABASE_FILE']
+        else:
+            config_file = os.environ['HOME'] + "/.walliser.json.gz"
 
-    Core(Ui(), Config(config_file, args.readonly), args)
+        Core(Ui(), Config(config_file, args.readonly), args)
 
+    except KeyboardInterrupt:
+        print("\033[?25h") # ANSI_SHOW_CURSOR
 
 if __name__ == "__main__":
     main()
