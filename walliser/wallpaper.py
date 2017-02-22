@@ -7,6 +7,7 @@ from operator import attrgetter
 from random import shuffle
 from urllib.parse import quote as urlquote
 from glob import iglob as glob
+from re import sub
 from datetime import datetime
 
 from PIL import Image
@@ -96,7 +97,7 @@ class Wallpaper(Observable):
         self.modified = datetime.strptime(modified, self.TIME_FORMAT)
         self._rating = rating
         self._purity = purity
-        self.tags = tags if tags is not None else []
+        self.tags = set(tags) if tags else set()
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + self.path
@@ -120,29 +121,38 @@ class Wallpaper(Observable):
             "height": self.height,
             "added": self.added.strftime(self.TIME_FORMAT),
             "modified": self.modified.strftime(self.TIME_FORMAT),
-            **{
-                attr: getattr(self, attr)
-                for attr in ["rating", "purity", "tags"]
-                if getattr(self, attr)
-            }
+            "rating": self.rating,
+            "purity": self.purity,
+            "tags": sorted(list(self.tags))
         }
 
     @observed
     def toggle_tag(self, tag):
         try:
-            self.tags.remove(tag)
-        except ValueError:
-            self.tags.append(tag)
-            self.tags.sort()
-
-    def matches(self, query):
-        return query is None or query(
-            self.rating, self.purity, self.tags, self.width, self.height, self.format,
-            self.rating, self.purity, self.tags, self.width, self.height, self.format,
-        )
+            self._tags.remove(tag)
+        except KeyError:
+            self._tags.add(tag)
 
     def show(self, screen_index=0):
         show_wallpaper(screen_index, self)
+
+
+def make_query(expression):
+    attributes = ("rating", "purity", "tags",
+                  "width", "height", "format",
+                  "added", "modified")
+    def replacer(match):
+        word = match.group(0)
+        for attr in attributes:
+            try:
+                return "_wp." + next(a for a in attributes if a.startswith(word))
+            except StopIteration:
+                pass
+        return word
+    return eval(
+        "lambda _wp:" + sub("[A-Za-z]+", replacer, expression),
+        {"__builtins__": {"min": min, "max": max}},
+        {})
 
 
 class WallpaperController:
@@ -158,14 +168,7 @@ class WallpaperController:
         except (TypeError, KeyError):
             config_data = {}
 
-        query = None
-        if args.query:
-            query = eval(
-                "lambda rating,purity,tags,width,height,format,r,p,t,w,h,f:"
-                        + args.query,
-                {"__builtins__": {"min": min, "max": max}},
-                dict(),
-            )
+        query = make_query(args.query or "True")
 
         if args.wallpaper_sources:
             wallpapers = self.wallpapers_from_paths(args.wallpaper_sources,
@@ -175,7 +178,7 @@ class WallpaperController:
                                 for hash, data in config_data.items())
 
         self.wallpapers = []
-        for wp in set(wp for wp in wallpapers if wp.matches(query)):
+        for wp in set(wp for wp in wallpapers if query(wp)):
             wp.subscribe(self)
             self.wallpapers.append(wp)
 
@@ -186,8 +189,7 @@ class WallpaperController:
             # raise Exception("No wallpapers found.")
             die("No wallpapers found.")
 
-        self.wallpaper_count = len(self.wallpapers)
-        ui.update_wallpaper_count(self.wallpaper_count)
+        ui.update_wallpaper_count(len(self.wallpapers))
 
         if args.shuffle:
             shuffle(self.wallpapers)

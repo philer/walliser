@@ -102,10 +102,9 @@ class ScreenController:
         self.ui = ui
         self.wallpaper_controller = wallpaper_controller
 
-        screen_count = get_screen_count()
+        self.screen_count = screen_count = get_screen_count()
         if not screen_count:
             raise Exception("No screens found.")
-        self.screen_count = screen_count
         self.ui.update_screen_count(screen_count)
 
         self.screens = []

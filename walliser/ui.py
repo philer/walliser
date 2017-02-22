@@ -7,7 +7,7 @@ from inspect import signature
 from time import time
 from datetime import timedelta
 
-from .util import Observable, observed, clamp, crop, right_pad
+from .util import Observable, observed, clamp, crop
 from .screen import Screen
 import walliser
 
@@ -45,7 +45,7 @@ def rating_string(value, length=5, *, positive="+", negative="-",
             yield "",""
 
         string, padchar = next((s,p) for s,p in options() if len(s) <= length)
-        return right_pad(length, string, padchar)
+        return string.ljust(length, padchar)
 
 
 def rating_to_string(rating, length=5):

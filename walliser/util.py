@@ -25,12 +25,6 @@ def crop(lines, columns, string, ellipsis="…"):
         for line in string.split("\n")[0:lines]
     )
 
-def right_pad(length, string, character=" "):
-    """Extends string to given length by adding padding characters if necessary.
-    If string is longer than length it will be shortened to length.
-    """
-    return string[0:length] + character * (length - len(string))
-
 
 class modlist:
     """Store a current position and allow cycling."""
