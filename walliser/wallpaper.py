@@ -85,6 +85,11 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
+    __slots__ = ('hash', 'int_hash', 'paths',
+                 'format', 'width', 'height',
+                 'added', 'modified',
+                 '_rating', '_purity', 'tags',
+                )
     def __init__(self, hash, paths, format, width, height, added, modified,
                  rating=0, purity=0, tags=None):
         super().__init__()

@@ -108,6 +108,7 @@ class Observable:
     @observed methods (including @property setters) is called.
     """
 
+    __slots__ = ('_observers',)
     def __init__(self):
         self._observers = set()
 

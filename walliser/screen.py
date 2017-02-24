@@ -49,6 +49,9 @@ class Screen(Observable):
     def is_paused(self, paused):
         self._is_paused = paused
 
+    __slots__ = ('idx', '_wallpapers',
+                 '_is_current', '_is_selected', '_is_paused',
+                )
     def __init__(self, idx, wallpapers,
                  is_current=False, is_selected=False, is_paused=False):
         super().__init__()
