@@ -135,9 +135,9 @@ class Wallpaper(Observable):
     @observed
     def toggle_tag(self, tag):
         try:
-            self._tags.remove(tag)
+            self.tags.remove(tag)
         except KeyError:
-            self._tags.add(tag)
+            self.tags.add(tag)
 
     def show(self, screen_index=0):
         show_wallpaper(screen_index, self)
