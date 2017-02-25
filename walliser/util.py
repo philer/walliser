@@ -5,6 +5,7 @@ import hashlib
 from functools import wraps
 from time import time
 from shutil import get_terminal_size
+import enum
 
 def exhaust(iterator):
     """Do nothing with every element of an iterator."""
@@ -40,6 +41,26 @@ def throttle(seconds):
                 return fn(*args, **kwargs)
         return wrapper
     return throttle_decorator
+
+
+# Relies on undocumented implementation details in stdlib (works in 3.5, 3.6)
+class _IdentityEnumDict(enum._EnumDict):
+    """dict subclass that dynamically maps keys to themselves."""
+    def __getitem__(self, key):
+        try:
+            return super().__getitem__(key)
+        except KeyError:
+            if key[0] == '_' == key[-1]: # overly strict _[sd]under_ check
+                raise
+            self[key] = key
+        return key
+
+# Relies on undocumented implementation details in stdlib (works in 3.5, 3.6)
+class AutoStrEnumMeta(enum.EnumMeta):
+    """Enum type that automatically assigns members their name as their value"""
+    @classmethod
+    def __prepare__(metacls, cls, bases):
+        return _IdentityEnumDict()
 
 
 class modlist:

@@ -2,12 +2,50 @@
 
 from functools import wraps
 from time import time
+from enum import Enum, unique
+from inspect import signature
 
 import signal
 
 from .wallpaper import WallpaperController
 from .screen import ScreenController
-import walliser
+from .util import AutoStrEnumMeta
+
+@unique
+class Signal(str, Enum, metaclass=AutoStrEnumMeta):
+    QUIT
+    SAVE
+
+    UI_RESIZE
+
+    NEXT, PREV
+    INCREASE_DELAY, REDUCE_DELAY
+
+    NEXT_SCREEN, PREV_SCREEN
+    TOGGLE_SCREEN
+    CYCLE_SCREENS
+
+    NEXT_ON_SCREEN, PREV_ON_SCREEN
+
+    INCREMENT_RATING, DECREMENT_RATING
+    INCREMENT_PURITY, DECREMENT_PURITY
+
+    TOGGLE_TAG
+
+    def __init__(self, _):
+        self._subscribers = {}
+
+    def subscribe(self, fn):
+        self._subscribers[fn] = signature(fn).parameters.keys()
+
+    def unsubscribe(self, fn):
+        del self._subscribers[fn]
+
+    def trigger(self, **kwargs):
+        kwargs['signal'] = self
+        for fn, argnames in self._subscribers.items():
+            fn(**{arg: kwargs[arg] for arg in argnames if arg in kwargs})
+
 
 class Core:
     """Main entry point to the application, manages signals and main loop."""
@@ -106,26 +144,25 @@ class Core:
                 self.set_timeout(10, self.save_config)
             self.extend_timeout(3, self.update_wallpapers)
 
-        sig = self.ui.on_signal
         scrctrl = self.screen_controller
-        sig(walliser.QUIT, self.interrupt)
-        sig(walliser.SAVE, self.save_config)
-        sig(walliser.UI_RESIZE, scrctrl.update_ui)
-        sig(walliser.NEXT, with_interval_reset(scrctrl.next))
-        sig(walliser.PREV, with_interval_reset(scrctrl.prev))
-        sig(walliser.CYCLE_SCREENS, with_interval_reset(scrctrl.cycle_screens))
-        sig(walliser.INCREASE_DELAY, self.increase_interval_delay)
-        sig(walliser.REDUCE_DELAY, self.reduce_interval_delay)
-        sig(walliser.NEXT_SCREEN, scrctrl.select_next)
-        sig(walliser.PREV_SCREEN, scrctrl.select_prev)
-        sig(walliser.TOGGLE_SCREEN, scrctrl.pause_unpause_selected)
-        sig(walliser.NEXT_ON_SCREEN, next_on_selected)
-        sig(walliser.PREV_ON_SCREEN, prev_on_selected)
-        sig(walliser.INCREMENT_RATING, inc_rating)
-        sig(walliser.DECREMENT_RATING, dec_rating)
-        sig(walliser.INCREMENT_PURITY, inc_purity)
-        sig(walliser.DECREMENT_PURITY, dec_purity)
-        sig(walliser.TOGGLE_TAG, toggle_tag)
+        Signal.QUIT.subscribe(self.interrupt)
+        Signal.SAVE.subscribe(self.save_config)
+        Signal.UI_RESIZE.subscribe(scrctrl.update_ui)
+        Signal.NEXT.subscribe(with_interval_reset(scrctrl.next))
+        Signal.PREV.subscribe(with_interval_reset(scrctrl.prev))
+        Signal.CYCLE_SCREENS.subscribe(with_interval_reset(scrctrl.cycle_screens))
+        Signal.INCREASE_DELAY.subscribe(self.increase_interval_delay)
+        Signal.REDUCE_DELAY.subscribe(self.reduce_interval_delay)
+        Signal.NEXT_SCREEN.subscribe(scrctrl.select_next)
+        Signal.PREV_SCREEN.subscribe(scrctrl.select_prev)
+        Signal.TOGGLE_SCREEN.subscribe(scrctrl.pause_unpause_selected)
+        Signal.NEXT_ON_SCREEN.subscribe(next_on_selected)
+        Signal.PREV_ON_SCREEN.subscribe(prev_on_selected)
+        Signal.INCREMENT_RATING.subscribe(inc_rating)
+        Signal.DECREMENT_RATING.subscribe(dec_rating)
+        Signal.INCREMENT_PURITY.subscribe(inc_purity)
+        Signal.DECREMENT_PURITY.subscribe(dec_purity)
+        Signal.TOGGLE_TAG.subscribe(toggle_tag)
 
 
     def update_wallpapers(self):

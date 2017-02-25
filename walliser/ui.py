@@ -3,13 +3,12 @@
 import os
 import sys
 import curses
-from inspect import signature
 from time import time
 from datetime import timedelta
 
 from .util import Observable, observed, clamp, crop
 from .screen import Screen
-import walliser
+from .core import Signal
 
 def rating_string(value, length=5, *, positive="+", negative="-",
                   positive_bg=" ", negative_bg=" ", padding=" ", big="∞"):
@@ -123,33 +122,31 @@ class Ui:
     MAX_SCREEN_WINDOW_HEIGHT = 2
 
     KEYS_TO_SIGNALS = {
-        curses.KEY_RESIZE: walliser.UI_RESIZE,
-        27:                walliser.QUIT, # esc
-        '^Q':              walliser.QUIT,
-        '^S':              walliser.SAVE,
-        'n':               walliser.PREV,
-        'm':               walliser.NEXT,
-        'x':               walliser.CYCLE_SCREENS,
-        '-':               walliser.INCREASE_DELAY,
-        '+':               walliser.REDUCE_DELAY,
-        ord('\t'):         walliser.NEXT_SCREEN, # tab
-        curses.KEY_DOWN:   walliser.NEXT_SCREEN,
-        curses.KEY_UP:     walliser.PREV_SCREEN,
-        curses.KEY_RIGHT:  walliser.NEXT_ON_SCREEN,
-        curses.KEY_LEFT:   walliser.PREV_ON_SCREEN,
-        ' ':               walliser.TOGGLE_SCREEN,
-        'a':               walliser.NEXT_ON_SCREEN,
-        'q':               walliser.PREV_ON_SCREEN,
-        'w':               walliser.INCREMENT_RATING,
-        's':               walliser.DECREMENT_RATING,
-        'd':               walliser.INCREMENT_PURITY,
-        'e':               walliser.DECREMENT_PURITY,
-        't':               walliser.TOGGLE_TAG,
+        curses.KEY_RESIZE: Signal.UI_RESIZE,
+        27:                Signal.QUIT, # esc
+        '^Q':              Signal.QUIT,
+        '^S':              Signal.SAVE,
+        'n':               Signal.PREV,
+        'm':               Signal.NEXT,
+        'x':               Signal.CYCLE_SCREENS,
+        '-':               Signal.INCREASE_DELAY,
+        '+':               Signal.REDUCE_DELAY,
+        ord('\t'):         Signal.NEXT_SCREEN, # tab
+        curses.KEY_DOWN:   Signal.NEXT_SCREEN,
+        curses.KEY_UP:     Signal.PREV_SCREEN,
+        curses.KEY_RIGHT:  Signal.NEXT_ON_SCREEN,
+        curses.KEY_LEFT:   Signal.PREV_ON_SCREEN,
+        ' ':               Signal.TOGGLE_SCREEN,
+        'a':               Signal.NEXT_ON_SCREEN,
+        'q':               Signal.PREV_ON_SCREEN,
+        'w':               Signal.INCREMENT_RATING,
+        's':               Signal.DECREMENT_RATING,
+        'd':               Signal.INCREMENT_PURITY,
+        'e':               Signal.DECREMENT_PURITY,
+        't':               Signal.TOGGLE_TAG,
     }
 
     def __init__(self):
-        self.signal_listeners = dict()
-
         self.header_string = ""
         self.footer_string = ""
         self.info_string = ""
@@ -238,23 +235,7 @@ class Ui:
                 signal = self.KEYS_TO_SIGNALS[key]
             except KeyError:
                 return False
-        try:
-            listeners = self.signal_listeners[signal]
-        except KeyError:
-            return False
-
-        args = {"signal": signal, "char": char, "key": key}
-        for listener in listeners:
-                listener[0](**{key: args[key] for key in listener[1:] if key in args})
-        return True
-
-    def on_signal(self, signal, fn):
-        """Add listener for given signal perserving order and duplicates."""
-        fn_data = fn, *signature(fn).parameters.keys()
-        try:
-            self.signal_listeners[signal].append(fn_data)
-        except KeyError:
-            self.signal_listeners[signal] = [fn_data]
+        signal.trigger(char=char, key=key)
 
     def layout(self):
         """Hardcoded ui layout.
