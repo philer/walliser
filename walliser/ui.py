@@ -3,7 +3,6 @@
 import os
 import sys
 import curses
-from time import time
 from datetime import timedelta
 
 from .util import Observable, observed, clamp, crop

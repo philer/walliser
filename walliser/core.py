@@ -88,7 +88,7 @@ class Core:
             return
         self.config["wallpapers"].update(wallpaper_updates)
         self.config.save()
-        updates_count =  len(wallpaper_updates)
+        updates_count = len(wallpaper_updates)
         self.stats["wallpaper_updates"] += updates_count
         print("{} update{} saved ({} total)".format(
             updates_count,

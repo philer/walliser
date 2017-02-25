@@ -2,7 +2,6 @@
 
 import signal
 
-from .config import Config
 from .ui import info, warning, error, die, progress_bar
 from .util import get_file_hash
 

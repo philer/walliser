@@ -88,10 +88,6 @@ class Screen(Observable):
     def prev_wallpaper(self):
         self.cycle_wallpaper(-1)
 
-    @observed
-    def notify(self, *_):
-        pass
-
 
 class ScreenController:
     """Manage available screens, cycling through them, pausing etc."""
