@@ -213,6 +213,7 @@ class Ui:
         curses.echo()
         input = self.header_window.getstr(0, len(prompt))
         curses.noecho()
+        curses.raw()
         curses.curs_set(0)
         self.update_header()
         return input.decode("utf-8")
