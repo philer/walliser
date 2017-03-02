@@ -1,12 +1,25 @@
 # -*- coding: utf-8 -*-
 
+import os
 import signal
 
-from .ui import info, warning, error, die, progress_bar
-from .util import get_file_hash
+from .util import info, warning, error, die, get_file_hash
+from .progress import progress, smooth_bar, ascii_bar, progress_bar
 
-# TODO remove_dead_paths
+def run(config):
+    check_dead_paths(config)
 
+
+def check_dead_paths(config):
+    """List paths that no longer point to files."""
+    wallpapers = config["wallpapers"]
+    for i, (hash, wp_data) in enumerate(progress(wallpapers.items(), text="{0[0]:5s}: {0[1][paths][0]}")):
+        for path in wp_data["paths"]:
+            if not os.path.isfile(path):
+                warning("path '{}' doesn't exist.".format(path))
+
+
+# OBSOLETE
 def convert_to_hash_keys(config):
     """Restructure config.wallpapers to use hashes as keys instead of paths"""
     by_paths = config["wallpapers"]
@@ -38,6 +51,8 @@ def convert_to_hash_keys(config):
     config["wallpapers"] = by_hashes
     config.save()
 
+
+# OBSOLETE
 def find_duplicates(config):
     """Check for file duplicates in config, add hashes"""
     wallpapers = config["wallpapers"]
@@ -47,9 +62,9 @@ def find_duplicates(config):
 
     signal.signal(signal.SIGINT, interrupt_signal_handler)
     info("Comparing hashes of " + str(len(wallpapers)) + " wallpapers…")
-    bar = progress_bar(len(wallpapers))
+    bar = smooth_bar(len(wallpapers))
     for path, data in sorted(wallpapers.items()):
-        bar(after=str(len(dupes)) + " duplicates found. "
+        bar(text=str(len(dupes)) + " duplicates found. "
                  + str(len(updated_wallpapers)) + " new hashes calculated – "
                  + path)
         try:

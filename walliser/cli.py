@@ -7,9 +7,6 @@ from argparse import ArgumentParser
 from .core import Core
 from .ui import Ui
 from .config import Config
-# from .wallpaper import set_wallpaper_paths
-# from .maintenance import find_duplicates, convert_to_hash_keys
-# from .util import error, die
 
 def main():
     """Parse command line arguments recognized by this module."""
@@ -54,6 +51,11 @@ def main():
         type=str,
         default="r >= 0",
     )
+    parser.add_argument("--maintenance",
+        help="Use this flag to prevent any changes to the config file.",
+        dest="maintenance",
+        action='store_true'
+    )
     parser.add_argument("--readonly",
         help="Use this flag to prevent any changes to the config file.",
         dest="readonly",
@@ -69,8 +71,13 @@ def main():
             config_file = os.environ['WALLISER_DATABASE_FILE']
         else:
             config_file = os.environ['HOME'] + "/.walliser.json.gz"
+        config = Config(config_file, args.readonly)
 
-        Core(Ui(), Config(config_file, args.readonly), args)
+        if args.maintenance:
+            from walliser import maintenance
+            maintenance.run(config)
+        else:
+            Core(Ui(), config, args)
 
     except KeyboardInterrupt:
         print("\033[?25h") # ANSI_SHOW_CURSOR
