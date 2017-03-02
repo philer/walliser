@@ -3,8 +3,6 @@
 import sys
 import hashlib
 from functools import wraps
-from time import time
-from shutil import get_terminal_size
 import enum
 
 def exhaust(iterator):
@@ -27,20 +25,6 @@ def crop(lines, columns, string, ellipsis="…"):
         if len(line) > columns else line
         for line in string.split("\n")[0:lines]
     )
-
-def throttle(seconds):
-    """Dcorator for throttling function calls."""
-    def throttle_decorator(fn):
-        last_run = 0
-        @wraps(fn)
-        def wrapper(*args, **kwargs):
-            now = time()
-            nonlocal last_run
-            if now - last_run > seconds:
-                last_run = now
-                return fn(*args, **kwargs)
-        return wrapper
-    return throttle_decorator
 
 
 # Relies on undocumented implementation details in stdlib (works in 3.5, 3.6)
@@ -194,76 +178,3 @@ def error(message):
 def die(message="Exiting…"):
     error(message)
     sys.exit(1)
-
-
-def progress_bar(total=100,
-                 prefix="", fill="█", sep="", background="░", suffix="",
-                 output=sys.stderr, interval=0.1):
-    """Create a CLI progress bar. Returns a callback for updating it."""
-    counter = " / " + str(total)
-    frame_width = len(prefix + sep + suffix + " " + str(total) + counter)
-
-    total_progress = 0
-    def update(progress=1, after_text=""):
-        nonlocal total_progress
-        total_progress += progress
-        if total_progress >= total:
-            output.write(ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
-            output.flush()
-        else:
-            redraw(after_text)
-        return update
-
-    @throttle(interval)
-    def redraw(after_text=""):
-        term_width, _ = get_terminal_size()
-        bar_width = term_width - frame_width
-        fill_width = int(total_progress * bar_width / total)
-        lines = [
-              prefix
-            + fill * fill_width
-            + sep
-            + background * (bar_width - fill_width)
-            + suffix
-            + " " + str(total_progress) + counter
-        ] + after_text.split("\n")
-
-        text = "\n".join(line[:term_width] + ANSI_CLEAR_LINE for line in lines)
-
-        # ANSI nF: put curser at the beginning of n lines up
-        text += "\033[" + str(len(lines)-1) + "F" + ANSI_HIDE_CURSOR
-        output.write(text)
-        output.flush()
-
-    return update
-
-
-def progress_spinner(lines="", frames="⠏⠛⠹⢸⣰⣤⣆⡇",
-                     output=sys.stderr, interval=0.1):
-    """Create a CLI spinner. Returns a callback for updating it."""
-    offset = 0
-
-    def update(lines=lines):
-        if lines is None:
-            output.write(ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
-            output.flush()
-        else:
-            redraw(lines)
-        return update
-
-    @throttle(interval)
-    def redraw(lines):
-        nonlocal offset
-        frame = frames[offset % len(frames)]
-        offset += 1
-        term_width, _ = get_terminal_size()
-        lines = [frame + " " + line for line in lines.split("\n")]
-        text = "\n".join(line[:term_width] + ANSI_CLEAR_LINE for line in lines)
-
-        # ANSI nF: put curser at the beginning of n lines up
-        text += "\033[" + str(len(lines)-1) + "F" + ANSI_HIDE_CURSOR
-
-        output.write(text)
-        output.flush()
-
-    return update
