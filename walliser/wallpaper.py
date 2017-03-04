@@ -16,7 +16,7 @@ from .util import (Observable, observed,
                    get_file_hash,
                    info, warning, die)
 
-from .progress import progress
+from .progress import progress, IterProgressBar, style
 
 def set_wallpaper_paths(wallpaper_paths):
     """Low level wallpaper setter using feh"""
@@ -209,7 +209,7 @@ class WallpaperController:
                                     for path in data["paths"] }
         now = datetime.now().strftime(Wallpaper.TIME_FORMAT)
         images = list(progress(find_images(sources)))
-        for path in progress(images):
+        for path in IterProgressBar(images, **style.smooth):
             if path in known_paths:
                 hash = known_paths[path]
                 data = config_data[hash]

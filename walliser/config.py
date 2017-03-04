@@ -36,8 +36,7 @@ class Config(dict):
             # only raise if the file was not empty (i.e. actually malformed)
             if os.stat(self.filename).st_size != 0:
                 raise
-        if data:
-            super().__init__(**data)
+        super().__init__(**data)
 
     def rec_update(self, data):
         """update recursively (only dicts, no other collection types)"""

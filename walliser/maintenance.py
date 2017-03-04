@@ -6,6 +6,7 @@ import signal
 from .util import info, warning, error, die, get_file_hash
 from .progress import progress, smooth_bar, ascii_bar, progress_bar
 
+
 def run(config):
     check_dead_paths(config)
 
