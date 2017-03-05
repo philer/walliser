@@ -4,7 +4,7 @@ import os
 import signal
 
 from .util import info, warning, error, die, get_file_hash
-from .progress import progress, smooth_bar, ascii_bar, progress_bar
+from .progress import progress
 
 
 def run(config):
@@ -14,7 +14,7 @@ def run(config):
 def check_dead_paths(config):
     """List paths that no longer point to files."""
     wallpapers = config["wallpapers"]
-    for i, (hash, wp_data) in enumerate(progress(wallpapers.items(), text="{0[0]:5s}: {0[1][paths][0]}")):
+    for i, (hash, wp_data) in enumerate(progress(wallpapers.items(), text="{0[1][paths][0]}")):
         for path in wp_data["paths"]:
             if not os.path.isfile(path):
                 warning("path '{}' doesn't exist.".format(path))

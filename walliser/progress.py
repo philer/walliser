@@ -5,20 +5,21 @@ import sys
 from time import time
 from shutil import get_terminal_size
 from enum import Enum
+from abc import ABCMeta
 
 # ANSI_CURSOR_UP          = "\033[A"
-ANSI_HIDE_CURSOR        = "\033[?25l"
-ANSI_SHOW_CURSOR        = "\033[?25h"
+ANSI_HIDE_CURSOR = "\033[?25l"
+ANSI_SHOW_CURSOR = "\033[?25h"
 
 # ANSI erase in line (CSI n K)
-ANSI_ERASE_TO_EOL = "\033[K" # same as "\033[0K"
+ANSI_ERASE_TO_EOL = "\033[0K"  # same as "\033[K"
 ANSI_ERASE_TO_BOL = "\033[1K"
-ANSI_ERASE_LINE = "\033[2K"
+ANSI_ERASE_LINE   = "\033[2K"
 
 # ANSI erase display (CSI n J)
-ANSI_ERASE_TO_BOTTOM = "\033[0J"
-ANSI_ERASE_TO_TOP = "\033[1J"
-ANSI_ERASE_ALL = "\033[2J"
+ANSI_ERASE_TO_BOTTOM    = "\033[0J"
+ANSI_ERASE_TO_TOP       = "\033[1J"
+ANSI_ERASE_ALL          = "\033[2J"
 ANSI_ERASE_ALL_BUFFERED = "\033[3J"
 
 
@@ -28,12 +29,19 @@ def clamp(min, max, val):
 
 
 class style(dict, Enum):
+    """Argument presets for ProgressBar constructor."""
     ascii = {
         'prefix':      "[",
         'fill':        "=",
         'sep':         ">",
         'background':  "-",
         'suffix':      "] ",
+    }
+    simple= {
+        'fill':        "█",
+        'sub_chars':   None,
+        'background':  "░",
+        'suffix':      " ",
     }
     smooth = {
         'fill':        "█",
@@ -52,6 +60,7 @@ class style(dict, Enum):
     }
 
 class frames(str, Enum):
+    """Fancy frames for ProgressSpinner."""
     jump = "___-``'´-___"
     pop = ".oO@*"
     rise = "▁▂▃▄▅▆▇█▇▆▅▄▃▁"
@@ -69,7 +78,7 @@ class frames(str, Enum):
     seven_dots =   "⣾⣽⣻⢿⡿⣟⣯⣷"
 
 
-class ProgressIndicator:
+class ProgressIndicator(metaclass=ABCMeta):
     """Display a progress bar on the command line.
     Settings:
         text       : any string shown below the bar
@@ -91,15 +100,14 @@ class ProgressIndicator:
         self.interval = interval
         self.last_redraw = 0
 
-    def __enter__(self):
-        return self
+    # def __enter__(self):
+    #     return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.clear()
+    # def __exit__(self, exc_type, exc_value, traceback):
+    #     self.clear()
 
     def __iter__(self):
-        with self:
-            return self
+        return self
 
     def __next__(self):
         self.update()
@@ -148,6 +156,7 @@ class ProgressIndicator:
         self.output.write(ANSI_ERASE_TO_BOTTOM + ANSI_SHOW_CURSOR)
         self.output.flush()
 
+
 class ProgressBar(ProgressIndicator):
     """Display a progress bar on the command line.
     Settings:
@@ -167,8 +176,8 @@ class ProgressBar(ProgressIndicator):
         output     : file descriptor to write to (needs .write and .flush)
         interval   : minimum delay between writing to output
     """
-    def __init__(self, total=100, prefix="", fill="█", sub_chars=None, sep="",
-                 background="░", suffix=" ", **settings):
+    def __init__(self, total=100, prefix="", fill="█", sub_chars=" ▏▎▍▌▋▊▉", sep="",
+                 background=" ", suffix="▏", **settings):
         super().__init__(**settings)
         self.total = total
         self.prefix = prefix
@@ -183,6 +192,7 @@ class ProgressBar(ProgressIndicator):
         if self.current < self.total:
             self.update()
         else:
+            self.clear()
             raise StopIteration
 
     def update(self, forward=1, text=None):
@@ -236,7 +246,7 @@ class ProgressSpinner(ProgressIndicator):
                 for line in self.text.split("\n")]
 
 
-class IterProgressIndicator(ProgressIndicator):
+class IterProgressIndicator(ProgressIndicator, metaclass=ABCMeta):
 
     @property
     def text(self):
@@ -251,9 +261,8 @@ class IterProgressIndicator(ProgressIndicator):
         self.items = items
 
     def __iter__(self):
-        with self:
-            self.items_iterator = iter(self.items)
-            return self
+        self.items_iterator = iter(self.items)
+        return self
 
     def __next__(self):
         self.current_item = next(self.items_iterator)
@@ -266,10 +275,15 @@ class IterProgressBar(ProgressBar, IterProgressIndicator):
         super().__init__(items=items, **settings)
 
     def __next__(self):
-        self.current_item = next(self.items_iterator)
-        self.total = len(self.items) # may be updated
-        self.update()
-        return self.current_item
+        try:
+            self.current_item = next(self.items_iterator)
+        except StopIteration:
+            self.clear()
+            raise
+        else:
+            self.total = len(self.items) # may be updated
+            self.update()
+            return self.current_item
 
 
 class IterProgressSpinner(ProgressSpinner, IterProgressIndicator):

@@ -20,11 +20,9 @@ def clamp(min, max, val):
 
 def crop(lines, columns, string, ellipsis="…"):
     """Shortens string to given maximum length and adds ellipsis if it does."""
-    return "\n".join(
-        line[ 0 : columns - len(ellipsis) ] + ellipsis
-        if len(line) > columns else line
-        for line in string.split("\n")[0:lines]
-    )
+    return "\n".join(line[ 0 : columns - len(ellipsis) ] + ellipsis
+                     if len(line) > columns else line
+                     for line in string.split("\n")[0:lines])
 
 
 # Relies on undocumented implementation details in stdlib (works in 3.5, 3.6)
@@ -158,18 +156,19 @@ def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):
 ### CLI helpers ###
 
 # ANSI escape sequences used to style and control output on the terminal (TTY)
-ANSI_RED_BOLD           = "\033[1;31m"
-ANSI_YELLOW_ITALIC      = "\033[3;33m"
-ANSI_NO_STYLE           = "\033[0m"
+ANSI_RED_BOLD      = "\033[1;31m"
+ANSI_YELLOW_ITALIC = "\033[3;33m"
+ANSI_NO_STYLE      = "\033[0m"
+ANSI_ERASE_TO_EOL  = "\033[0K"  # same as "\033[K"
 
 def info(message):
-    print(message)
+    print(message + ANSI_ERASE_TO_EOL)
 
 def warning(message):
-    print(ANSI_YELLOW_ITALIC + message + ANSI_NO_STYLE)
+    print(ANSI_YELLOW_ITALIC + message + ANSI_NO_STYLE + ANSI_ERASE_TO_EOL)
 
 def error(message):
-    print(ANSI_RED_BOLD + message + ANSI_NO_STYLE)
+    print(ANSI_RED_BOLD + message + ANSI_NO_STYLE + ANSI_ERASE_TO_EOL)
 
 def die(message="Exiting…"):
     error(message)
