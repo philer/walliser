@@ -208,7 +208,7 @@ class WallpaperController:
         known_paths = {path: hash for hash, data in config_data.items()
                                     for path in data["paths"] }
         now = datetime.now().strftime(Wallpaper.TIME_FORMAT)
-        images = list(progress(find_images(sources)))
+        images = set(progress(find_images(sources)))
         for path in IterProgressBar(images, **style.smooth):
             if path in known_paths:
                 hash = known_paths[path]

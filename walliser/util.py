@@ -161,19 +161,15 @@ def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):
 ANSI_RED_BOLD           = "\033[1;31m"
 ANSI_YELLOW_ITALIC      = "\033[3;33m"
 ANSI_NO_STYLE           = "\033[0m"
-ANSI_CLEAR_LINE         = "\033[K"
-# ANSI_CURSOR_UP          = "\033[A"
-ANSI_HIDE_CURSOR        = "\033[?25l"
-ANSI_SHOW_CURSOR        = "\033[?25h"
 
 def info(message):
-    print(message + ANSI_CLEAR_LINE)
+    print(message)
 
 def warning(message):
-    print(ANSI_YELLOW_ITALIC + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE)
+    print(ANSI_YELLOW_ITALIC + message + ANSI_NO_STYLE)
 
 def error(message):
-    print(ANSI_RED_BOLD + message + ANSI_NO_STYLE + ANSI_CLEAR_LINE + ANSI_SHOW_CURSOR)
+    print(ANSI_RED_BOLD + message + ANSI_NO_STYLE)
 
 def die(message="Exiting…"):
     error(message)
