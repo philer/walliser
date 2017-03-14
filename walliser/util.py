@@ -60,7 +60,7 @@ class modlist:
         try:
             return key % len(self.items)
         except ZeroDivisionError:
-            raise IndexError
+            raise IndexError("modlist is empty") from None
 
     def __getitem__(self, key):
         return self.items[self.index(key)]

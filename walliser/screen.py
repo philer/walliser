@@ -158,7 +158,7 @@ class ScreenController:
             self.active_screens.current.is_current = False
             self.active_screens.prev()
             self.active_screens.current.is_current = True
-        except IndexError:
+        except IndexError: # no active screens left
             pass
 
     def select(self, scr):

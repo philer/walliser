@@ -108,7 +108,7 @@ class Wallpaper(Observable):
         self.tags = set(tags) if tags else set()
 
     def __repr__(self):
-        return self.__class__.__name__ + ":" + self.path
+        return self.__class__.__name__ + ":" + self.hash
 
     def __eq__(self, other):
         if isinstance(other, Wallpaper):
@@ -146,21 +146,38 @@ class Wallpaper(Observable):
 
 
 def make_query(expression):
-    attributes = ("rating", "purity", "tags",
-                  "width", "height", "format",
-                  "added", "modified")
+    """Turn an expression into a function, assigning Wallpaper properties to
+    (possibly abbreviated) variable names as needed."""
+    available_attributes = ("rating", "purity", "tags",
+                            "width", "height", "format",
+                            "added", "modified")
+    used_attributes = set()
     def replacer(match):
+        """Replace abbreviated attributes and register them."""
         word = match.group(0)
-        for attr in attributes:
-            try:
-                return "_wp." + next(a for a in attributes if a.startswith(word))
-            except StopIteration:
-                pass
+        for attr in available_attributes:
+            if attr.startswith(word):
+                used_attributes.add(attr)
+                return attr
         return word
-    return eval(
-        "lambda _wp:" + sub("[A-Za-z]+", replacer, expression),
-        {"__builtins__": {"min": min, "max": max}},
-        {})
+    expression = sub("[A-Za-z_]+", replacer, expression)
+    used_attributes = sorted(used_attributes)
+
+    # Let's hope this is safe. Mainly guard against accidents.
+    # We eval an inner and outer lambda separately. The inner lambda
+    # takes care of the expression, the outer lambda assigns attributes
+    # to expression variables (thus preventing write access as well as
+    # arbitrary statement evaluation).
+    arguments = ",".join(used_attributes)
+    parameters = ",".join("wp." + attr for attr in used_attributes)
+    try:
+        inner = eval("lambda {}:{}".format(arguments, expression),
+                     {"__builtins__": {"min": min, "max": max}})
+    except SyntaxError:
+        raise SyntaxError("Invalid query expression `{}`.".format(expression)) from None
+    outer = eval("lambda wp:inner({})".format(parameters),
+                 {"__builtins__": {}, "inner": inner})
+    return outer, expression
 
 
 class WallpaperController:
@@ -176,7 +193,7 @@ class WallpaperController:
         except (TypeError, KeyError):
             config_data = {}
 
-        query = make_query(args.query or "True")
+        query, query_expression = make_query(args.query)
 
         if args.wallpaper_sources:
             wallpapers = self.wallpapers_from_paths(args.wallpaper_sources,
