@@ -3,6 +3,7 @@
 import os
 import subprocess
 import builtins
+import logging
 from operator import attrgetter
 from random import shuffle
 from urllib.parse import quote as urlquote
@@ -12,29 +13,40 @@ from datetime import datetime
 
 from PIL import Image
 
-from .util import (Observable, observed,
-                   get_file_hash,
-                   info, warning, die)
-
+from .util import Observable, observed, get_file_hash
 from .progress import progress
+
+
+log = logging.getLogger(__name__)
+
+live_wallpaper_paths = []
 
 def set_wallpaper_paths(wallpaper_paths):
     """Low level wallpaper setter using feh"""
+    global live_wallpaper_paths
+    live_wallpaper_paths = wallpaper_paths
     subprocess.run(["feh", "--bg-fill", "--no-fehbg"] + list(wallpaper_paths),
                    stdout=subprocess.PIPE)
 
-live_wallpapers = []
+def set_wallpaper_path(wallpaper_path, screen_index=0):
+    live_wallpaper_paths[screen_index] = wallpaper_path
+    set_wallpaper_paths(live_wallpaper_paths)
+
 
 def show_wallpapers(wallpapers):
     """Set actually visible wallpapers."""
-    global live_wallpapers
-    live_wallpapers = list(wallpapers)
-    set_wallpaper_paths((wp.path for wp in live_wallpapers))
+    try:
+        set_wallpaper_paths([wp.path for wp in wallpapers])
+    except ValueError:
+        log.warning("No valid wallpaper path found for at least one in %r",
+                       wallpapers)
 
-def show_wallpaper(screen_index, wallpaper):
+def show_wallpaper(wallpaper, screen_index=0):
     """Set actually visible wallpapers."""
-    live_wallpapers[screen_index] = wallpaper
-    set_wallpaper_paths((wp.path for wp in live_wallpapers))
+    try:
+        set_wallpaper_path(wallpaper.path, screen_index)
+    except ValueError:
+        log.warning("No valid wallpaper path found in %r", wallpaper)
 
 
 def find_images(patterns):
@@ -63,7 +75,11 @@ class Wallpaper(Observable):
 
     @property
     def path(self):
-        return self.paths[0] # TODO check for existance
+        """Return a path to this wallpaper or ValueError if none are valid."""
+        for path in self.paths:
+            if os.path.isfile(path):
+                return path
+        raise ValueError("No existing path left for " + repr(self))
 
     @property
     def url(self):
@@ -142,7 +158,7 @@ class Wallpaper(Observable):
             self.tags.add(tag)
 
     def show(self, screen_index=0):
-        show_wallpaper(screen_index, self)
+        show_wallpaper(self, screen_index)
 
 
 def make_query(expression):
@@ -194,6 +210,7 @@ class WallpaperController:
             config_data = {}
 
         query, query_expression = make_query(args.query)
+        log.debug("Using query expression `%s`", query_expression)
 
         if args.wallpaper_sources:
             wallpapers = self.wallpapers_from_paths(args.wallpaper_sources,
@@ -208,11 +225,12 @@ class WallpaperController:
             self.wallpapers.append(wp)
 
         if self.updated_wallpapers:
-            info("Found {} new wallpapers.".format(len(self.updated_wallpapers)))
+            log.info("Found %d new wallpapers.", len(self.updated_wallpapers))
 
         if not self.wallpapers:
-            # raise Exception("No wallpapers found.")
-            die("No wallpapers found.")
+            raise Exception('No wallpapers found. Query: "' + query_expression + '"')
+        else:
+            log.debug("Starting with %d wallpapers.", len(self.wallpapers))
 
         ui.update_wallpaper_count(len(self.wallpapers))
 
@@ -256,7 +274,7 @@ class WallpaperController:
                             "modified": now,
                         }
                 except IOError:
-                    warning("Can't open 'file://{}'".format(urlquote(path)))
+                    log.warning("Can't open 'file://%s'", urlquote(path))
                     continue
             wp = Wallpaper(hash=hash, **data)
             if updated:

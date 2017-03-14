@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import subprocess
+import logging
 
 from .wallpaper import show_wallpapers
 from .util import Observable, observed, steplist, modlist, each
+
+log = logging.getLogger(__name__)
 
 def get_screen_count():
     """Finds out the number of connected screens."""
@@ -104,6 +107,7 @@ class ScreenController:
         self.screen_count = screen_count = get_screen_count()
         if not screen_count:
             raise Exception("No screens found.")
+        log.debug("Found %d screens.", screen_count)
         self.ui.update_screen_count(screen_count)
 
         self.screens = []

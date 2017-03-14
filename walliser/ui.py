@@ -4,6 +4,7 @@ import os
 import sys
 import curses
 from datetime import timedelta
+import logging
 
 from .util import Observable, observed, clamp, crop
 from .screen import Screen
@@ -145,7 +146,8 @@ class Ui:
         't':               Signal.TOGGLE_TAG,
     }
 
-    def __init__(self):
+    def __init__(self, log_handler):
+        self.log_handler = log_handler
         self.header_string = ""
         self.footer_string = ""
         self.info_string = ""
@@ -157,18 +159,20 @@ class Ui:
         # self.update_header(screen_count, wallpaper_count, interval_delay)
 
     def __enter__(self):
-        self.stdout_wrapper = StdOutWrapper()
-        self.stdout_wrapper.subscribe(self)
+        # self.stdout_wrapper = StdOutWrapper()
+        # self.stdout_wrapper.subscribe(self)
+        self.log_handler.auto_flush = False
         self.init_curses()
-        sys.stdout = self.stdout_wrapper
+        # sys.stdout = self.stdout_wrapper
         # self.layout()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.exit_curses()
-        sys.stdout = sys.__stdout__
-        sys.stdout.write(self.stdout_wrapper.text)
-
+        self.log_handler.auto_flush = True
+        self.log_handler.flush()
+        # sys.stdout = sys.__stdout__
+        # sys.stdout.write(self.stdout_wrapper.text)
 
     def init_curses(self):
         """Set up curses interface. (compare curses.wrapper)"""

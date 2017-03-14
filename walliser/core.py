@@ -4,12 +4,14 @@ from functools import wraps
 from time import time
 from enum import Enum, unique
 from inspect import signature
-
+import logging
 import signal
 
 from .wallpaper import WallpaperController
 from .screen import ScreenController
 from .util import AutoStrEnumMeta
+
+log = logging.getLogger(__name__)
 
 @unique
 class Signal(str, Enum, metaclass=AutoStrEnumMeta):
@@ -90,11 +92,10 @@ class Core:
         self.config.save()
         updates_count = len(wallpaper_updates)
         self.stats["wallpaper_updates"] += updates_count
-        print("{} update{} saved ({} total)".format(
-            updates_count,
-            "" if updates_count == 1 else "s",
-            self.stats["wallpaper_updates"]
-        ))
+        log.info("%d update%s saved (%d total)",
+                 updates_count,
+                 "" if updates_count == 1 else "s",
+                 self.stats["wallpaper_updates"])
 
     def assign_ui_listeners(self):
         """Set up Ui interaction listeners."""
