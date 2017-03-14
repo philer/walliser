@@ -90,7 +90,7 @@ class ProgressIndicator(metaclass=ABCMeta):
         interval   : minimum delay between writing to output
     """
     def __init__(self, text="", width=None, min_width=0, max_width=240,
-                 output=sys.stderr, interval=0.1, **non_settings):
+                 output=sys.stderr, interval=1/64, **non_settings):
         super().__init__()
         self.text = text
         self.width = width
@@ -100,14 +100,16 @@ class ProgressIndicator(metaclass=ABCMeta):
         self.interval = interval
         self.last_redraw = 0
 
-    # def __enter__(self):
-    #     return self
+    def __enter__(self):
+        return self
 
-    # def __exit__(self, exc_type, exc_value, traceback):
-    #     self.clear()
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.clear()
 
     def __iter__(self):
-        return self
+        with self:
+            while True:
+                yield next(self)
 
     def __next__(self):
         self.update()
@@ -232,9 +234,9 @@ class ProgressBar(ProgressIndicator):
 
 
 class ProgressSpinner(ProgressIndicator):
-    def __init__(self, frames=frames.four_dots1, **settings):
+    def __init__(self, frames=frames.four_dots1, interval=1/16, **settings):
         """Create a CLI spinner."""
-        super().__init__(**settings)
+        super().__init__(interval=interval, **settings)
         self.frames = frames
         self.offset = 0
 
@@ -259,10 +261,7 @@ class IterProgressIndicator(ProgressIndicator, metaclass=ABCMeta):
     def __init__(self, items, text="{}", **settings):
         super().__init__(items=items, text=text, **settings)
         self.items = items
-
-    def __iter__(self):
         self.items_iterator = iter(self.items)
-        return self
 
     def __next__(self):
         self.current_item = next(self.items_iterator)
@@ -277,7 +276,7 @@ class IterProgressBar(ProgressBar, IterProgressIndicator):
     def __next__(self):
         try:
             self.current_item = next(self.items_iterator)
-        except StopIteration:
+        except:
             self.clear()
             raise
         else:
@@ -309,3 +308,10 @@ def progress_deco(**settings):
             return IterProgressSpinner(fn(*args, **kwargs), **settings)
         return wrapper
     return decorator
+
+
+# demo
+if __name__ == "__main__":
+    from time import sleep
+    for i in progress(range(1000), text="processing item No.{}…"):
+        sleep(0.01)
