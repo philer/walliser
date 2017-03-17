@@ -6,7 +6,7 @@ import curses
 from datetime import timedelta
 import logging
 
-from .util import Observable, observed, clamp, crop
+from .util import Observable, observed, clamp, crop, CallbackLogHandler
 from .screen import Screen
 from .core import Signal
 
@@ -91,8 +91,24 @@ def screen_to_string(screen, lines):
             url=wp.url,
         )
 
+
+def set_curses_window_content(win, string, ellipsis="…"):
+    """Put a string in a curses window. Takes care of erasing and cropping."""
+    height, width = win.getmaxyx()
+    win.erase()
+    try:
+        win.addstr(crop(height, width, string, ellipsis))
+    except curses.error as ce:
+        # curses likes to complain about the curser leaving the writeable
+        # area after it (correctly) wrote the string.
+        # Another workaround would be using insstr.
+        pass
+    win.refresh()
+
+
 ansi_to_curses_colors = dict()
 def curses_color(self, fg=-1, bg=-1):
+    """Get curses internal color pair id, create it if it doesn't exist yet."""
     try:
         return ansi_to_curses_colors[fg,bg]
     except KeyError:
@@ -101,19 +117,6 @@ def curses_color(self, fg=-1, bg=-1):
         color = curses.color_pair(n)
         ansi_to_curses_colors[fg,bg] = color
         return color
-
-class StdOutWrapper(Observable):
-    """Observe write calls on a writable."""
-    def __init__(self):
-        super().__init__()
-        self.text = ""
-
-    @observed
-    def write(self, txt):
-        self.text += txt
-
-    def flush(self):
-        pass
 
 
 class Ui:
@@ -146,8 +149,8 @@ class Ui:
         't':               Signal.TOGGLE_TAG,
     }
 
-    def __init__(self, log_handler):
-        self.log_handler = log_handler
+    def __init__(self, cli_log_handler):
+        self.cli_log_handler = cli_log_handler
         self.header_string = ""
         self.footer_string = ""
         self.info_string = ""
@@ -159,20 +162,18 @@ class Ui:
         # self.update_header(screen_count, wallpaper_count, interval_delay)
 
     def __enter__(self):
-        # self.stdout_wrapper = StdOutWrapper()
-        # self.stdout_wrapper.subscribe(self)
-        self.log_handler.auto_flush = False
+        self.cli_log_handler.auto_flush = False
         self.init_curses()
-        # sys.stdout = self.stdout_wrapper
+        self.log_handler = CallbackLogHandler(self.info)
+        logging.getLogger(__package__).addHandler(self.log_handler)
         # self.layout()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        logging.getLogger(__package__).removeHandler(self.log_handler)
         self.exit_curses()
-        self.log_handler.auto_flush = True
-        self.log_handler.flush()
-        # sys.stdout = sys.__stdout__
-        # sys.stdout.write(self.stdout_wrapper.text)
+        self.cli_log_handler.auto_flush = True
+        self.cli_log_handler.flush()
 
     def init_curses(self):
         """Set up curses interface. (compare curses.wrapper)"""
@@ -255,14 +256,14 @@ class Ui:
 
         self.root_win.erase()
         if header_height:
-            self.header_window = self.root_win.subwin(1, width, 0, 0)
+            self.header_window = self.root_win.subpad(1, width, 0, 0)
             self.update_header()
             if header_height > 1:
                 self.root_win.insstr(1, 0, "─" * width, curses_color(243))
 
         self.screen_windows = []
         for idx in range(min(self.screen_count, height)):
-            self.screen_windows.append(self.root_win.subwin(
+            self.screen_windows.append(self.root_win.subpad(
                 screen_window_height,
                 width,
                 idx * screen_window_height + header_height,
@@ -272,10 +273,8 @@ class Ui:
     def notify(self, obj, method, *args):
         if isinstance(obj, Screen):
             self.update_screen(obj)
-        elif isinstance(obj, StdOutWrapper) and method == "write":
-            string = args[0].strip()
-            if string:
-                self.info(string)
+        else:
+            raise NotImplemented
 
     def update_screen_count(self, screen_count):
         self.screen_count = screen_count
@@ -301,7 +300,7 @@ class Ui:
             return
         run_time = (self.wallpaper_count * self.interval_delay
                                          / self.screen_count)
-        _, width = self.root_win.getmaxyx()
+        _, width = self.header_window.getmaxyx()
         text = (
                 "{wallpaper_count:d} wallpapers ⋮ "
                 "{screen_count:d} screens ⋮ "
@@ -313,7 +312,7 @@ class Ui:
                 screen_count=self.screen_count,
                 run_time=str(timedelta(seconds=int(run_time))),
             )
-        text += "{: >{}s}".format(self.info_string, width - len(text))
+        text += "{: >{}s}".format(self.info_string, max(0, width - len(text)))
         self.header_string = text
         self.refresh_header()
 
@@ -334,17 +333,9 @@ class Ui:
         self.refresh_screen(screen.idx)
 
     def refresh_header(self):
-        self._set_window_content(self.header_window, self.header_string)
+        set_curses_window_content(self.header_window, self.header_string)
 
     def refresh_screen(self, idx):
-        self._set_window_content(
-            self.screen_windows[idx],
-            self.screen_strings[idx])
+        set_curses_window_content(self.screen_windows[idx],
+                                  self.screen_strings[idx])
         # win.chgat(0, 0, curses.A_REVERSE | curses.A_BOLD)
-
-    def _set_window_content(self, win, string):
-        (height, width) = win.getmaxyx()
-        win.erase()
-        win.insstr(crop(height, width, string))
-        win.refresh()
-

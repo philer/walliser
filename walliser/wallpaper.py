@@ -25,7 +25,7 @@ def set_wallpaper_paths(wallpaper_paths):
     """Low level wallpaper setter using feh"""
     global live_wallpaper_paths
     live_wallpaper_paths = wallpaper_paths
-    subprocess.run(["feh", "--bg-fill", "--no-fehbg"] + list(wallpaper_paths),
+    subprocess.run(("feh", "--bg-fill", "--no-fehbg") + tuple(wallpaper_paths),
                    stdout=subprocess.PIPE)
 
 def set_wallpaper_path(wallpaper_path, screen_index=0):

@@ -196,10 +196,20 @@ def die(message="Exiting…"):
     sys.exit(1)
 
 
+class CallbackLogHandler(logging.Handler):
+    """Log handler that calls a given function with formatted messages."""
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+
+    def emit(self, record):
+        self.fn(self.format(record))
+
+
 class BufferedLogHandler(logging.Handler):
     """Log handler that writes to a file descriptor only on flush."""
     def __init__(self, auto_flush=True, output=sys.stdout):
-        logging.Handler.__init__(self)
+        super().__init__()
         self.auto_flush = auto_flush
         self.output = output
         self.buffer = []
