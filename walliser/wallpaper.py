@@ -19,34 +19,51 @@ from .progress import progress
 
 log = logging.getLogger(__name__)
 
-live_wallpaper_paths = []
+live_wallpaper_paths = ()
 
 def set_wallpaper_paths(wallpaper_paths):
     """Low level wallpaper setter using feh"""
-    global live_wallpaper_paths
-    live_wallpaper_paths = wallpaper_paths
-    subprocess.run(("feh", "--bg-fill", "--no-fehbg") + tuple(wallpaper_paths),
-                   stdout=subprocess.PIPE)
+    wallpaper_paths = tuple(wallpaper_paths)
+    args = ("feh", "--bg-fill", "--no-fehbg") + wallpaper_paths
+    try:
+        subprocess.run(args=args, check=True,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as cpe:
+        log.warning("setting wallpapers failed {}", wallpaper_paths)
+        log.debug(cpe.output)
+        for path in wallpaper_paths:
+            if not os.path.isfile(path):
+                raise FileNotFoundError("Wallpaper {} doesn't exist.".format(path))
+            if not os.access(path, os.R_OK):
+                raise PermissionError("No permission to read wallpaper {}.".format(path))
+        raise
+    else:
+        global live_wallpaper_paths
+        live_wallpaper_paths = wallpaper_paths
 
 def set_wallpaper_path(wallpaper_path, screen_index=0):
-    live_wallpaper_paths[screen_index] = wallpaper_path
-    set_wallpaper_paths(live_wallpaper_paths)
-
+    set_wallpaper_paths(live_wallpaper_paths[:screen_index]
+                        + (wallpaper_path,)
+                        + live_wallpaper_paths[screen_index + 1:])
 
 def show_wallpapers(wallpapers):
-    """Set actually visible wallpapers."""
     try:
-        set_wallpaper_paths([wp.path for wp in wallpapers])
-    except ValueError:
-        log.warning("No valid wallpaper path found for at least one in %r",
-                       wallpapers)
+        set_wallpaper_paths(wp.path for wp in wallpapers)
+    except AttributeError as ae:
+        log.exception(ae)
+    except (FileNotFoundError, PermissionError):
+        for wp in wallpapers:
+            wp.check_paths()
+        show_wallpapers(wallpapers)
 
 def show_wallpaper(wallpaper, screen_index=0):
-    """Set actually visible wallpapers."""
     try:
         set_wallpaper_path(wallpaper.path, screen_index)
-    except ValueError:
-        log.warning("No valid wallpaper path found in %r", wallpaper)
+    except AttributeError as ae:
+        log.exception(ae)
+    except (FileNotFoundError, PermissionError):
+        wallpaper.check_paths()
+        show_wallpaper(wallpaper, screen_index)
 
 
 def find_images(patterns):
@@ -75,11 +92,10 @@ class Wallpaper(Observable):
 
     @property
     def path(self):
-        """Return a path to this wallpaper or ValueError if none are valid."""
-        for path in self.paths:
-            if os.path.isfile(path):
-                return path
-        raise ValueError("No existing path left for " + repr(self))
+        try:
+            return self.paths[0]
+        except IndexError:
+            raise AttributeError("No valid path left for " + repr(self)) from None
 
     @property
     def url(self):
@@ -103,13 +119,13 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
-    __slots__ = ('hash', 'int_hash', 'paths',
+    __slots__ = ('hash', 'int_hash', 'paths', 'invalid_paths',
                  'format', 'width', 'height',
                  'added', 'modified',
                  '_rating', '_purity', 'tags',
                 )
     def __init__(self, hash, paths, format, width, height, added, modified,
-                 rating=0, purity=0, tags=None):
+                 invalid_paths=None, rating=0, purity=0, tags=None):
         super().__init__()
         self.hash = hash
         self.int_hash = builtins.hash(int(hash, 16)) # truncated int
@@ -121,7 +137,8 @@ class Wallpaper(Observable):
         self.modified = datetime.strptime(modified, self.TIME_FORMAT)
         self._rating = rating
         self._purity = purity
-        self.tags = set(tags) if tags else set()
+        self.invalid_paths = invalid_paths or []
+        self.tags = tags or []
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + self.hash
@@ -138,24 +155,36 @@ class Wallpaper(Observable):
         """Dictionary representation of this object for storing.
         Excludes path so it can be used as key.
         """
-        return {
-            "paths": self.paths,
-            "format": self.format,
-            "width": self.width,
-            "height": self.height,
-            "added": self.added.strftime(self.TIME_FORMAT),
-            "modified": self.modified.strftime(self.TIME_FORMAT),
-            "rating": self.rating,
-            "purity": self.purity,
-            "tags": sorted(list(self.tags))
+        data = {
+            'paths': self.paths,
+            'format': self.format,
+            'width': self.width,
+            'height': self.height,
+            'added': self.added.strftime(self.TIME_FORMAT),
+            'modified': self.modified.strftime(self.TIME_FORMAT),
+            'rating': self.rating,
+            'purity': self.purity,
         }
+        for attr in 'tags', 'invalid_paths':
+            value = getattr(self, attr)
+            if value:
+                data[attr] = value
+        return data
+
+    def check_paths(self):
+        for path in self.paths:
+            if not os.path.isfile(path) or not os.access(path, os.R_OK):
+                log.warning("Invalidating wallpaper path '{}'".format(path))
+                self.paths.remove(path)
+                self.invalid_paths.append(path)
 
     @observed
     def toggle_tag(self, tag):
         try:
             self.tags.remove(tag)
         except KeyError:
-            self.tags.add(tag)
+            self.tags.append(tag)
+            self.tags.sort()
 
     def show(self, screen_index=0):
         show_wallpaper(self, screen_index)
@@ -217,10 +246,11 @@ class WallpaperController:
                                                     config_data)
         else:
             wallpapers = (Wallpaper(hash=hash, **data)
-                                for hash, data in config_data.items())
+                          for hash, data in config_data.items()
+                          if data['paths'])
 
         self.wallpapers = []
-        for wp in set(wp for wp in wallpapers if query(wp)):
+        for wp in set(filter(query, wallpapers)):
             wp.subscribe(self)
             self.wallpapers.append(wp)
 
