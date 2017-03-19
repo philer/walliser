@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import hashlib
+from math import ceil
 from functools import wraps
+from inspect import signature
 import enum
 import logging
+import hashlib
 
 def exhaust(iterator):
     """Do nothing with every element of an iterator."""
@@ -54,7 +56,7 @@ class modlist:
         return self[self.position]
 
     def __init__(self, items, position=0):
-        self.items = list(items)
+        self.items = items
         self.position = position
 
     def index(self, key):
@@ -87,9 +89,9 @@ class steplist:
     """Like a list but keys cycle indefinitely over a sublist."""
 
     def __init__(self, items, step=1, offset=0):
-        self.items = list(items)
+        self.items = items
         self.step = step
-        self.offset = offset
+        self.offset = offset % step
 
     def index(self, key):
         return key * self.step + self.offset
@@ -101,7 +103,7 @@ class steplist:
         self.items[self.index(key)] = value
 
     def __len__(self):
-        return len(self.items) // self.step
+        return ceil((len(self.items) - self.offset) / self.step)
 
     def __bool__(self):
         return bool(self.items)
@@ -201,9 +203,12 @@ class CallbackLogHandler(logging.Handler):
     def __init__(self, fn):
         super().__init__()
         self.fn = fn
+        self.argnames = signature(fn).parameters.keys()
 
     def emit(self, record):
-        self.fn(self.format(record))
+        if 'message' in self.argnames:
+            self.format(record)
+        self.fn(**{arg: getattr(record, arg) for arg in self.argnames})
 
 
 class BufferedLogHandler(logging.Handler):

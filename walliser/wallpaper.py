@@ -26,7 +26,7 @@ def set_wallpaper_paths(wallpaper_paths):
     wallpaper_paths = tuple(wallpaper_paths)
     args = ("feh", "--bg-fill", "--no-fehbg") + wallpaper_paths
     try:
-        subprocess.run(args=args, check=True,
+        subprocess.run(args=args, check=True, universal_newlines=True,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as cpe:
         log.warning("setting wallpapers failed {}", wallpaper_paths)
@@ -182,7 +182,7 @@ class Wallpaper(Observable):
     def toggle_tag(self, tag):
         try:
             self.tags.remove(tag)
-        except KeyError:
+        except ValueError:
             self.tags.append(tag)
             self.tags.sort()
 
@@ -258,9 +258,9 @@ class WallpaperController:
             log.info("Found %d new wallpapers.", len(self.updated_wallpapers))
 
         if not self.wallpapers:
-            raise Exception('No wallpapers found. Query: "' + query_expression + '"')
+            raise Exception('No matching wallpapers found. Query: "' + query_expression + '"')
         else:
-            log.debug("Starting with %d wallpapers.", len(self.wallpapers))
+            log.debug("Found %d matching wallpapers.", len(self.wallpapers))
 
         ui.update_wallpaper_count(len(self.wallpapers))
 

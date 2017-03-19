@@ -98,7 +98,7 @@ def set_curses_window_content(win, string, ellipsis="…"):
     win.erase()
     try:
         win.addstr(crop(height, width, string, ellipsis))
-    except curses.error as ce:
+    except curses.error:
         # curses likes to complain about the curser leaving the writeable
         # area after it (correctly) wrote the string.
         # Another workaround would be using insstr.
@@ -107,7 +107,7 @@ def set_curses_window_content(win, string, ellipsis="…"):
 
 
 ansi_to_curses_colors = dict()
-def curses_color(self, fg=-1, bg=-1):
+def curses_color(fg=-1, bg=-1):
     """Get curses internal color pair id, create it if it doesn't exist yet."""
     try:
         return ansi_to_curses_colors[fg,bg]
@@ -256,14 +256,14 @@ class Ui:
 
         self.root_win.erase()
         if header_height:
-            self.header_window = self.root_win.subpad(1, width, 0, 0)
+            self.header_window = self.root_win.subwin(1, width, 0, 0)
             self.update_header()
             if header_height > 1:
-                self.root_win.insstr(1, 0, "─" * width, curses_color(243))
+                self.root_win.addstr(1, 0, "─" * width, curses_color(243))
 
         self.screen_windows = []
         for idx in range(min(self.screen_count, height)):
-            self.screen_windows.append(self.root_win.subpad(
+            self.screen_windows.append(self.root_win.subwin(
                 screen_window_height,
                 width,
                 idx * screen_window_height + header_height,
@@ -275,6 +275,11 @@ class Ui:
             self.update_screen(obj)
         else:
             raise NotImplemented
+
+    def info(self, message):
+        """Set an information message visible to the user."""
+        self.info_string = message
+        self.update_header()
 
     def update_screen_count(self, screen_count):
         self.screen_count = screen_count
@@ -290,11 +295,6 @@ class Ui:
         self.interval_delay = interval_delay
         self.update_header()
 
-    def info(self, message):
-        """Set an information message visible to the user."""
-        self.info_string = message
-        self.update_header()
-
     def update_header(self):
         if not self.screen_count:
             return
@@ -303,16 +303,16 @@ class Ui:
         _, width = self.header_window.getmaxyx()
         text = (
                 "{wallpaper_count:d} wallpapers ⋮ "
-                "{screen_count:d} screens ⋮ "
+                # "{screen_count:d} screens ⋮ "
                 "{interval_delay:.3}s "
                 "({run_time}) "
             ).format(
                 wallpaper_count=self.wallpaper_count,
                 interval_delay=self.interval_delay,
-                screen_count=self.screen_count,
+                # screen_count=self.screen_count,
                 run_time=str(timedelta(seconds=int(run_time))),
             )
-        text += "{: >{}s}".format(self.info_string, max(0, width - len(text)))
+        text += self.info_string.rjust(width - len(text))
         self.header_string = text
         self.refresh_header()
 

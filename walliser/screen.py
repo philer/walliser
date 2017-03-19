@@ -2,21 +2,25 @@
 
 import subprocess
 import logging
+import re
 
 from .wallpaper import show_wallpapers
 from .util import Observable, observed, steplist, modlist, each
 
 log = logging.getLogger(__name__)
 
-def get_screen_count():
-    """Finds out the number of connected screens."""
-    # this is kind of a hack...
-    return (
-        subprocess
-            .check_output(["xrandr", "-q"])
-            .decode("ascii")
-            .count(" connected ")
-    )
+def get_screens_data():
+    """Iterate data of all active screens by parsing `xrandr --query`."""
+    result = subprocess.run(("xrandr", "--query"),
+                            check=True, universal_newlines=True,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    # kinda like sscanf
+    props = (('output', str), ('primary', bool), ('width', int), ('height', int))
+    regex = re.compile(r"^(\S+) connected( primary)? (\d+)x(\d+)",
+                       flags=re.MULTILINE | re.ASCII)
+    for match in regex.findall(result.stdout):
+        yield {name: type(value) for (name, type), value in zip(props, match)}
+
 
 class Screen(Observable):
     """Model representing one (usually physical) monitor"""
@@ -52,17 +56,17 @@ class Screen(Observable):
     def is_paused(self, paused):
         self._is_paused = paused
 
-    __slots__ = ('idx', '_wallpapers',
-                 '_is_current', '_is_selected', '_is_paused',
-                )
     def __init__(self, idx, wallpapers,
-                 is_current=False, is_selected=False, is_paused=False):
-        super().__init__()
+                 is_current=False, is_selected=False, is_paused=False,
+                 **props):
         self.idx = idx
-        self._wallpapers = wallpapers
+        self._wallpapers = modlist(wallpapers)
         self._is_current = is_current
         self._is_selected = is_selected
         self._is_paused = is_paused
+        for attr, value in props.items():
+            setattr(self, attr, value)
+        super().__init__()
         self.current_wallpaper.subscribe(self)
 
     def __repr__(self):
@@ -104,17 +108,21 @@ class ScreenController:
         self.ui = ui
         self.wallpaper_controller = wallpaper_controller
 
-        self.screen_count = screen_count = get_screen_count()
-        if not screen_count:
+        screens_data = tuple(get_screens_data())
+        if not screens_data:
             raise Exception("No screens found.")
+
+        screen_count = len(screens_data)
         log.debug("Found %d screens.", screen_count)
         self.ui.update_screen_count(screen_count)
 
         self.screens = []
-        for idx in range(screen_count):
-            wallpapers = modlist(steplist(self.wallpaper_controller.wallpapers,
-                                          step=screen_count, offset=idx))
-            screen = Screen(idx, wallpapers)
+        for idx, data in enumerate(screens_data):
+            wallpapers = steplist(self.wallpaper_controller.wallpapers,
+                                  step=screen_count, offset=idx)
+            log.debug("Initializing screen %d with %d wallpapers and properties %s",
+                      idx, len(wallpapers), data)
+            screen = Screen(idx, wallpapers, **data)
             screen.subscribe(ui)
             ui.update_screen(screen)
             self.screens.append(screen)
@@ -136,7 +144,7 @@ class ScreenController:
         """Shift entire screens array by one position."""
         self.selectable_screens.current.is_selected = False
         for screen in self.screens:
-            screen.idx = (screen.idx + 1) % self.screen_count
+            screen.idx = (screen.idx + 1) % len(self.screens)
         self.screens = self.screens[1:] + self.screens[0:1]
         self.selectable_screens = modlist(self.screens,
                                           self.selectable_screens.position)
@@ -195,7 +203,7 @@ class ScreenController:
         except IndexError:
             pass
         self.active_screens = modlist(
-            (s for s in self.screens if not s.is_paused),
+            [s for s in self.screens if not s.is_paused],
             self.active_screens.position
         )
         try:
