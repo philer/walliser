@@ -192,37 +192,33 @@ class Wallpaper(Observable):
 
 def make_query(expression):
     """Turn an expression into a function, assigning Wallpaper properties to
-    (possibly abbreviated) variable names as needed."""
-    available_attributes = ("rating", "purity", "tags",
-                            "width", "height", "format",
-                            "added", "modified")
-    used_attributes = set()
+    (possibly abbreviated) variable names as needed. Unknown names are
+    interpreted as tags."""
+    attributes = ("rating", "purity", "tags",
+                  "width", "height", "format",
+                  "added", "modified")
+    builtins = {"min": min, "max": max, "sum": sum, "map": map,
+                "int": int, "bool": bool, "str": str, "repr": repr}
+    keywords = set(builtins) | {"and", "or", "not", "for", "in", "if", "lambda",
+                                "True", "False", "None"}
     def replacer(match):
-        """Replace abbreviated attributes and register them."""
+        """Replace abbreviated attributes and tags."""
         word = match.group(0)
-        for attr in available_attributes:
+        if word in keywords:
+            return word
+        for attr in attributes:
             if attr.startswith(word):
-                used_attributes.add(attr)
-                return attr
-        return word
-    expression = sub("[A-Za-z_]+", replacer, expression)
-    used_attributes = sorted(used_attributes)
-
-    # Let's hope this is safe. Mainly guard against accidents.
-    # We eval an inner and outer lambda separately. The inner lambda
-    # takes care of the expression, the outer lambda assigns attributes
-    # to expression variables (thus preventing write access as well as
-    # arbitrary statement evaluation).
-    arguments = ",".join(used_attributes)
-    parameters = ",".join("wp." + attr for attr in used_attributes)
+                return "wp." + attr
+        else:
+            return "('{}' in wp.tags)".format(word)
+    expression = sub(r"[A-Za-z_][A-Za-z0-9_]*", replacer, expression)
+    definition = "lambda wp: bool({})".format(expression)
     try:
-        inner = eval("lambda {}:{}".format(arguments, expression),
-                     {"__builtins__": {"min": min, "max": max}})
+        # Let's hope this is safe. Mainly guard against accidents.
+        query = eval(definition, {"__builtins__": builtins})
     except SyntaxError:
         raise SyntaxError("Invalid query expression `{}`.".format(expression)) from None
-    outer = eval("lambda wp:inner({})".format(parameters),
-                 {"__builtins__": {}, "inner": inner})
-    return outer, expression
+    return query, expression
 
 
 class WallpaperController:
@@ -239,7 +235,7 @@ class WallpaperController:
             config_data = {}
 
         query, query_expression = make_query(args.query)
-        log.debug("Using query expression `%s`", query_expression)
+        log.debug("Using query `%s`", query_expression)
 
         if args.wallpaper_sources:
             wallpapers = self.wallpapers_from_paths(args.wallpaper_sources,

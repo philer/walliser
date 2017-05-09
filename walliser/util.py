@@ -12,6 +12,7 @@ def exhaust(iterator):
     """Do nothing with every element of an iterator."""
     for _ in iterator:
         pass
+# exhaust = deque(maxlen=0).extend
 
 def each(function, *iterators):
     """Like map() but runs immediately and returns nothing."""
