@@ -7,7 +7,6 @@ from inspect import signature
 import logging
 import signal
 
-from .wallpaper import WallpaperController
 from .screen import ScreenController
 from .util import AutoStrEnumMeta
 
@@ -60,24 +59,23 @@ class Core:
     def selected_wallpaper(self):
         return self.selected_screen.current_wallpaper
 
-    def __init__(self, ui, config, args):
-        self.config = config
+    def __init__(self, ui, config, wallpapers, interval=5.0):
         self.ui = ui
-        self.wallpaper_controller = WallpaperController(ui, config, args)
+        self.config = config
+        self.wallpapers = wallpapers
 
         self.stats = {"wallpaper_updates": 0}
         self.timeout_callbacks = {}
-        self.interval_delay = args.interval_delay
-        self.ui.update_interval_delay(args.interval_delay)
+        self.interval = interval
+        self.ui.update_interval(interval)
 
         with self.ui:
-            self.screen_controller = ScreenController(ui,
-                                                    self.wallpaper_controller)
+            self.screen_controller = ScreenController(ui, self.wallpapers)
             self.screen_controller.show_wallpapers()
 
             signal.signal(signal.SIGINT, self.interrupt)
             self.assign_ui_listeners()
-            self.set_timeout(self.interval_delay, self.update_wallpapers)
+            self.set_timeout(self.interval, self.update_wallpapers)
             self.set_timeout(2, self.save_config)
             self.run_event_loop()
 
@@ -85,7 +83,7 @@ class Core:
 
     def save_config(self):
         self.clear_timeout(self.save_config)
-        wallpaper_updates = self.wallpaper_controller.updated_json()
+        wallpaper_updates = self.wallpapers.updated_json()
         if not wallpaper_updates:
             return
         self.config["wallpapers"].update(wallpaper_updates)
@@ -105,18 +103,18 @@ class Core:
             @wraps(fn)
             def wrapper(*args):
                 fn(*args)
-                self.set_timeout(self.interval_delay, self.update_wallpapers)
+                self.set_timeout(self.interval, self.update_wallpapers)
             return wrapper
 
         def next_on_selected():
             """Update selected (or current) screen to the next wallpaper."""
             self.selected_screen.next_wallpaper()
-            self.set_timeout(self.interval_delay, self.update_wallpapers)
+            self.set_timeout(self.interval, self.update_wallpapers)
 
         def prev_on_selected():
             """Update selected (or current) screen to the previous wallpaper."""
             self.selected_screen.prev_wallpaper()
-            self.set_timeout(self.interval_delay, self.update_wallpapers)
+            self.set_timeout(self.interval, self.update_wallpapers)
 
         def inc_rating():
             self.selected_wallpaper.rating += 1
@@ -152,8 +150,8 @@ class Core:
         Signal.NEXT.subscribe(with_interval_reset(scrctrl.next))
         Signal.PREV.subscribe(with_interval_reset(scrctrl.prev))
         Signal.CYCLE_SCREENS.subscribe(with_interval_reset(scrctrl.cycle_screens))
-        Signal.INCREASE_DELAY.subscribe(self.increase_interval_delay)
-        Signal.REDUCE_DELAY.subscribe(self.reduce_interval_delay)
+        Signal.INCREASE_DELAY.subscribe(self.increase_interval)
+        Signal.REDUCE_DELAY.subscribe(self.reduce_interval)
         Signal.NEXT_SCREEN.subscribe(scrctrl.select_next)
         Signal.PREV_SCREEN.subscribe(scrctrl.select_prev)
         Signal.TOGGLE_SCREEN.subscribe(scrctrl.pause_unpause_selected)
@@ -168,19 +166,19 @@ class Core:
 
     def update_wallpapers(self):
         self.screen_controller.next()
-        self.set_timeout(self.interval_delay, self.update_wallpapers)
+        self.set_timeout(self.interval, self.update_wallpapers)
 
-    def increase_interval_delay(self):
+    def increase_interval(self):
         """Reduce wallpaper rotation speed by a quarter second."""
-        # self.interval_delay *= 1.1
-        self.interval_delay += 0.25
-        self.ui.update_interval_delay(self.interval_delay)
+        # self.interval *= 1.1
+        self.interval += 0.25
+        self.ui.update_interval(self.interval)
 
-    def reduce_interval_delay(self):
+    def reduce_interval(self):
         """Increase wallpaper rotation speed by a quarter second."""
-        # self.interval_delay *= 1/1.1
-        self.interval_delay -= 0.25
-        self.ui.update_interval_delay(self.interval_delay)
+        # self.interval *= 1/1.1
+        self.interval -= 0.25
+        self.ui.update_interval(self.interval)
 
     def set_timeout(self, delay, fn):
         self.timeout_callbacks[fn] = time() + delay

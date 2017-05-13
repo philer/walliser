@@ -10,6 +10,9 @@ from .util import Observable, observed, clamp, crop, CallbackLogHandler
 from .screen import Screen
 from .core import Signal
 
+
+log = logging.getLogger(__name__)
+
 def rating_string(value, length=5, *, positive="+", negative="-",
                   positive_bg=" ", negative_bg=" ", padding=" ", big="∞"):
         """Get a rating as a visually pleasing, fixed length string.
@@ -158,8 +161,8 @@ class Ui:
         self.screen_strings = []
         # self.screen_window_height = 0
         self.wallpaper_count = 0
-        self.interval_delay = 0
-        # self.update_header(screen_count, wallpaper_count, interval_delay)
+        self.interval = 0
+        # self.update_header(screen_count, wallpaper_count, interval)
 
     def __enter__(self):
         self.cli_log_handler.auto_flush = False
@@ -232,6 +235,7 @@ class Ui:
             # Not responsible for body content here, done via listener
 
         key = curses.keyname(char).decode("utf-8")
+        log.debug("key: %s", key)
         try:
             signal = self.KEYS_TO_SIGNALS[char]
         except KeyError:
@@ -291,24 +295,24 @@ class Ui:
         self.wallpaper_count = wallpaper_count
         self.update_header()
 
-    def update_interval_delay(self, interval_delay):
-        self.interval_delay = interval_delay
+    def update_interval(self, interval):
+        self.interval = interval
         self.update_header()
 
     def update_header(self):
         if not self.screen_count:
             return
-        run_time = (self.wallpaper_count * self.interval_delay
+        run_time = (self.wallpaper_count * self.interval
                                          / self.screen_count)
         _, width = self.header_window.getmaxyx()
         text = (
                 "{wallpaper_count:d} wallpapers ⋮ "
                 # "{screen_count:d} screens ⋮ "
-                "{interval_delay:.3}s "
+                "{interval:.3}s "
                 "({run_time}) "
             ).format(
                 wallpaper_count=self.wallpaper_count,
-                interval_delay=self.interval_delay,
+                interval=self.interval,
                 # screen_count=self.screen_count,
                 run_time=str(timedelta(seconds=int(run_time))),
             )

@@ -1,80 +1,49 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Walliser - A tool for cycling through wallpapers.
 
+Usage:
+  walliser [-q QUERY] [-s] [-i SECONDS]
+           [-c CONFIG_FILE] [--readonly]
+           [--quiet | -v | -vv | -vvv]
+           [--] [FILES/DIRS ...]
+  walliser --maintenance [-c CONFIG_FILE]
+  walliser -h | --help | --version
+
+Options:
+  -q QUERY --query QUERY
+                 Filter wallpapers using Python expressions.
+                 [default: rating >= 0]
+  -i SECONDS --interval SECONDS
+                 Seconds between updates (may be float) [default: 5]
+  -s --sort      Cycle through wallpapers in alphabetical order of path
+  -c CONFIG_FILE --config-file CONFIG_FILE
+                 Read and store wallpaper data in this file. If not specified
+                 will use WALLISER_DATABASE_FILE from environment variable or
+                 default to ~/.walliser.json.gz instead.
+     --readonly  Don't write anything to the configuration file.
+     --maintenance  Deprecated
+  -v --verbose   Show more and more info.
+     --quiet     Don't write any output after exiting fullscreen.
+  -h --help      Show this help message and exit.
+
+"""
 import os
 import sys
 from argparse import ArgumentParser
 import logging
 
+from docopt import docopt
+
+from . import __version__
 from .util import BufferedLogHandler, FancyLogFormatter
-from .core import Core
 from .ui import Ui
 from .config import Config
+from .wallpaper import WallpaperController
+from .core import Core
 
 
-def parse_args():
-    """Parse command line arguments recognized by this module."""
-    parser = ArgumentParser("walliser",
-        description="Update desktop background periodically",
-        epilog="Thank you and good bye.",
-    )
-    parser.add_argument("-c", "--config-file",
-        help="Read and store wallpaper data in this file. JSON formatted.",
-        dest='config_file',
-        type=str,
-        default=None,
-    )
-    parser.add_argument("wallpaper_sources",
-        help="Any number of files or directories where wallpapers can be found. Supports globbing",
-        metavar="FILE/DIR",
-        nargs='*',
-    )
-    parser.add_argument("-i", "--interval",
-        help="Seconds between updates (may be float)",
-        metavar="N",
-        dest='interval_delay',
-        type=float,
-        default=5.0,
-    )
-    sorting_group = parser.add_mutually_exclusive_group()
-    sorting_group.add_argument("-s", "--shuffle",
-        help="Cycle through wallpapers in random order.",
-        dest='shuffle',
-        action='store_true',
-        default=True,
-    )
-    sorting_group.add_argument("-S", "--sort",
-        help="Cycle through wallpapers in alphabetical order (fully resolved path).",
-        dest='shuffle',
-        action='store_false',
-    )
-    parser.add_argument("-q", "--query",
-        help="Filter wallpapers by rating and purity",
-        dest='query',
-        type=str,
-        default="r >= 0",
-    )
-    parser.add_argument("--maintenance",
-        help="Use this flag to prevent any changes to the config file.",
-        dest='maintenance',
-        action='store_true',
-    )
-    parser.add_argument("--readonly",
-        help="Use this flag to prevent any changes to the config file.",
-        dest='readonly',
-        action='store_true',
-    )
-    parser.add_argument("-v", "--verbose",
-        dest='verbose',
-        action='count',
-        default=0,
-    )
-    parser.add_argument("--quiet",
-        dest='quiet',
-        action='store_true',
-    )
-
-    return parser.parse_args()
+log = logging.getLogger(__name__)
 
 
 def setup_logging(verbose=False, quiet=False):
@@ -100,39 +69,44 @@ def setup_logging(verbose=False, quiet=False):
 
 def main():
     """application entry point"""
-    args = parse_args()
-    logging_handler = setup_logging(args.verbose, args.quiet)
+    args = docopt(__doc__, version=__version__)
+    logging_handler = setup_logging(args["--verbose"], args["--quiet"])
     log.debug("Starting up.")
 
     exitcode = 0
     try:
-        if args.config_file:
-            config_file = args.config_file
+        if args["--config-file"]:
+            config_file = args["--config-file"]
         elif 'WALLISER_DATABASE_FILE' in os.environ:
             config_file = os.environ['WALLISER_DATABASE_FILE']
         else:
             config_file = os.environ['HOME'] + "/.walliser.json.gz"
-        config = Config(config_file, args.readonly)
+        config = Config(config_file, readonly=args["--readonly"])
 
-        if args.maintenance:
+        if args["--maintenance"]:
             from walliser import maintenance
             maintenance.run(config)
         else:
-            Core(Ui(logging_handler), config, args)
+            ui = Ui(logging_handler)
+            wallpapers = WallpaperController(
+                ui,
+                config,
+                sources=args["FILES/DIRS"],
+                query=args["--query"],
+                sort=args["--sort"],
+            )
+            Core(ui, config, wallpapers, interval=float(args["--interval"]))
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception as e:
         exitcode = 1
         log.exception(str(e))
-        if args.verbose:
+        if args["--verbose"]:
             raise
     finally:
         log.debug("bye.")
         logging_handler.flush()
     sys.exit(exitcode)
-
-
-log = logging.getLogger(__name__)
 
 
 if __name__ == "__main__":

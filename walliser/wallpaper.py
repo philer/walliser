@@ -29,7 +29,7 @@ def set_wallpaper_paths(wallpaper_paths):
         subprocess.run(args=args, check=True, universal_newlines=True,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as cpe:
-        log.warning("setting wallpapers failed {}", wallpaper_paths)
+        log.warning("setting wallpapers failed '%s'", wallpaper_paths)
         log.debug(cpe.output)
         for path in wallpaper_paths:
             if not os.path.isfile(path):
@@ -225,7 +225,7 @@ class WallpaperController:
     """Manages a collection of relevant wallpapers and takes care of some
     config related IO (TODO: isolate the IO)."""
 
-    def __init__(self, ui, config, args):
+    def __init__(self, ui, config, sources=None, query="True", sort=False):
         self.wallpapers = []
         self.updated_wallpapers = set()
 
@@ -234,12 +234,11 @@ class WallpaperController:
         except (TypeError, KeyError):
             config_data = {}
 
-        query, query_expression = make_query(args.query)
+        query, query_expression = make_query(query)
         log.debug("Using query `%s`", query_expression)
 
-        if args.wallpaper_sources:
-            wallpapers = self.wallpapers_from_paths(args.wallpaper_sources,
-                                                    config_data)
+        if sources:
+            wallpapers = self.wallpapers_from_paths(sources, config_data)
         else:
             wallpapers = (Wallpaper(hash=hash, **data)
                           for hash, data in config_data.items()
@@ -260,10 +259,10 @@ class WallpaperController:
 
         ui.update_wallpaper_count(len(self.wallpapers))
 
-        if args.shuffle:
-            shuffle(self.wallpapers)
-        else:
+        if sort:
             self.wallpapers.sort(key=attrgetter("path"))
+        else:
+            shuffle(self.wallpapers)
 
     def wallpapers_from_paths(self, sources, config_data={}):
         """Iterate wallpapers in given paths, including new ones."""
