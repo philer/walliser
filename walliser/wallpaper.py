@@ -33,9 +33,9 @@ def set_wallpaper_paths(wallpaper_paths):
         log.debug(cpe.output)
         for path in wallpaper_paths:
             if not os.path.isfile(path):
-                raise FileNotFoundError("Wallpaper {} doesn't exist.".format(path))
+                raise FileNotFoundError("Wallpaper {} doesn't exist.".format(path)) from None
             if not os.access(path, os.R_OK):
-                raise PermissionError("No permission to read wallpaper {}.".format(path))
+                raise PermissionError("No permission to read wallpaper {}.".format(path)) from None
         raise
     else:
         global live_wallpaper_paths
@@ -47,6 +47,7 @@ def set_wallpaper_path(wallpaper_path, screen_index=0):
                         + live_wallpaper_paths[screen_index + 1:])
 
 def show_wallpapers(wallpapers):
+    wallpapers = tuple(wallpapers)
     try:
         set_wallpaper_paths(wp.path for wp in wallpapers)
     except AttributeError as ae:
@@ -54,7 +55,7 @@ def show_wallpapers(wallpapers):
     except (FileNotFoundError, PermissionError):
         for wp in wallpapers:
             wp.check_paths()
-        show_wallpapers(wallpapers)
+        set_wallpaper_paths(wp.path for wp in wallpapers)
 
 def show_wallpaper(wallpaper, screen_index=0):
     try:
@@ -63,7 +64,7 @@ def show_wallpaper(wallpaper, screen_index=0):
         log.exception(ae)
     except (FileNotFoundError, PermissionError):
         wallpaper.check_paths()
-        show_wallpaper(wallpaper, screen_index)
+        set_wallpaper_path(wallpaper.path, screen_index)
 
 
 def find_images(patterns):
@@ -174,9 +175,11 @@ class Wallpaper(Observable):
     def check_paths(self):
         for path in self.paths:
             if not os.path.isfile(path) or not os.access(path, os.R_OK):
-                log.warning("Invalidating wallpaper path '{}'".format(path))
+                log.warning("Invalidating wallpaper path '%s'", path)
                 self.paths.remove(path)
                 self.invalid_paths.append(path)
+        if not self.paths:
+            log.warning("No valid paths left for wallpaper '%s'", self.hash)
 
     @observed
     def toggle_tag(self, tag):
@@ -286,10 +289,12 @@ class WallpaperController:
                                            # for non-images.
                     hash = get_file_hash(path)
                     if hash in config_data:
+                        log.debug("Adding path of know wallpaper file://%s", urlquote(path))
                         data = config_data[hash].copy()
                         data["paths"].append(path)
                         data["paths"].sort()
                     else:  # new file
+                        log.debug("Added new wallpaper file://%s", urlquote(path))
                         data = {
                             "paths": [path],
                             "format": img.format,
