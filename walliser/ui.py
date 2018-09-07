@@ -258,21 +258,24 @@ class Ui:
                 height - header_height
             ) // self.screen_count
 
-        self.root_win.erase()
-        if header_height:
-            self.header_window = self.root_win.subwin(1, width, 0, 0)
-            self.update_header()
-            if header_height > 1:
-                self.root_win.addstr(1, 0, "─" * width, curses_color(243))
+        try:
+            self.root_win.erase()
+            if header_height:
+                self.header_window = self.root_win.subwin(1, width, 0, 0)
+                self.update_header()
+                if header_height > 1:
+                    self.root_win.addstr(1, 0, "─" * width, curses_color(243))
 
-        self.screen_windows = []
-        for idx in range(min(self.screen_count, height)):
-            self.screen_windows.append(self.root_win.subwin(
-                screen_window_height,
-                width,
-                idx * screen_window_height + header_height,
-                0
-            ))
+            self.screen_windows = []
+            for idx in range(min(self.screen_count, height)):
+                self.screen_windows.append(self.root_win.subwin(
+                    screen_window_height,
+                    width,
+                    idx * screen_window_height + header_height,
+                    0
+                ))
+        except curses.error:
+            pass
 
     def notify(self, obj, method, *args):
         if isinstance(obj, Screen):

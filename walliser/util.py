@@ -7,6 +7,9 @@ from inspect import signature
 import enum
 import logging
 import hashlib
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import re
 
 def exhaust(iterator):
     """Do nothing with every element of an iterator."""
@@ -250,3 +253,18 @@ class FancyLogFormatter(logging.Formatter):
             pass
         return message + ANSI.ERASE_TO_EOL
 
+
+_time_units = {
+    "s": "seconds", "M": "minutes", "H": "hours",
+    "d": "days", "w": "weeks", "m": "months", "y": "years",
+}
+
+def parse_relative_time(string):
+    parts = {}
+    number = 0
+    for match in re.findall(r"[a-zA-Z]+|[0-9]+", string):
+        try:
+            number = int(match)
+        except ValueError:
+            parts[_time_units[match]] = number
+    return datetime.now() - relativedelta(**parts)

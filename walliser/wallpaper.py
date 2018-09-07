@@ -8,12 +8,12 @@ from operator import attrgetter
 from random import shuffle
 from urllib.parse import quote as urlquote
 from glob import iglob as glob
-from re import sub
+import re
 from datetime import datetime
 
 from PIL import Image
 
-from .util import Observable, observed, get_file_hash
+from .util import Observable, observed, get_file_hash, parse_relative_time
 from .progress import progress
 
 
@@ -201,9 +201,11 @@ def make_query(expression):
                   "width", "height", "format",
                   "added", "modified")
     builtins = {"min": min, "max": max, "sum": sum, "map": map,
-                "int": int, "bool": bool, "str": str, "repr": repr}
+                "int": int, "bool": bool, "str": str, "repr": repr,
+                "parse_relative_time": parse_relative_time}
     keywords = set(builtins) | {"and", "or", "not", "for", "in", "if", "lambda",
                                 "True", "False", "None"}
+    time_pattern = re.compile(r"t(:?\d+[sMHdwmy])+")
     def replacer(match):
         """Replace abbreviated attributes and tags."""
         word = match.group(0)
@@ -212,9 +214,11 @@ def make_query(expression):
         for attr in attributes:
             if attr.startswith(word):
                 return "wp." + attr
-        else:
-            return "('{}' in wp.tags)".format(word)
-    expression = sub(r"[A-Za-z_][A-Za-z0-9_]*", replacer, expression)
+        if time_pattern.fullmatch(word):
+            return "parse_relative_time('{}')".format(word[1:])
+        return "('{}' in wp.tags)".format(word)
+
+    expression = re.sub(r"[A-Za-z_][A-Za-z0-9_]*", replacer, expression)
     definition = "lambda wp: bool({})".format(expression)
     try:
         # Let's hope this is safe. Mainly guard against accidents.
@@ -228,7 +232,8 @@ class WallpaperController:
     """Manages a collection of relevant wallpapers and takes care of some
     config related IO (TODO: isolate the IO)."""
 
-    def __init__(self, ui, config, sources=None, query="True", sort=False):
+    def __init__(self, ui, config, sources=None, query="True", time_added=None,
+                 sort=False):
         self.wallpapers = []
         self.updated_wallpapers = set()
 

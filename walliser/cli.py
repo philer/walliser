@@ -30,7 +30,6 @@ Options:
 """
 import os
 import sys
-from argparse import ArgumentParser
 import logging
 
 from docopt import docopt
@@ -71,7 +70,7 @@ def main():
     """application entry point"""
     args = docopt(__doc__, version=__version__)
     logging_handler = setup_logging(args["--verbose"], args["--quiet"])
-    log.debug("Starting up.")
+    log.debug("Starting up on python %s.", sys.version)
 
     exitcode = 0
     try:
