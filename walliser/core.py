@@ -64,7 +64,6 @@ class Core:
         self.config = config
         self.wallpapers = wallpapers
 
-        self.stats = {"wallpaper_updates": 0}
         self.timeout_callbacks = {}
         self.interval = interval
         self.ui.update_interval(interval)
@@ -83,17 +82,7 @@ class Core:
 
     def save_config(self):
         self.clear_timeout(self.save_config)
-        wallpaper_updates = self.wallpapers.updated_json()
-        if not wallpaper_updates:
-            return
-        self.config["wallpapers"].update(wallpaper_updates)
-        self.config.save()
-        updates_count = len(wallpaper_updates)
-        self.stats["wallpaper_updates"] += updates_count
-        log.info("%d update%s saved (%d total)",
-                 updates_count,
-                 "" if updates_count == 1 else "s",
-                 self.stats["wallpaper_updates"])
+        self.wallpapers.save_updates()
 
     def assign_ui_listeners(self):
         """Set up Ui interaction listeners."""

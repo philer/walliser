@@ -1,16 +1,40 @@
 # -*- coding: utf-8 -*-
 
 import os
-import signal
 
-from .util import info, warning, error, die, get_file_hash
+from .util import get_file_hash
 from .progress import progress
+from .wallpaper import WallpaperController
+
+import logging
+from signal import signal, SIGINT, SIGPIPE, SIG_DFL
+
+log = logging.getLogger(__name__)
+
+def interrupt_signal_handler(signal, frame):
+    print("Interrupted, exiting now!")
+    sys.exit(1)
+signal(SIGINT, interrupt_signal_handler)
+signal(SIGPIPE, SIG_DFL)  # ignore end of pipe (e.g. ...|head )
 
 
 def run(config):
-    check_dead_paths(config)
+    find_invalid_paths(config)
+
+def find_invalid_paths(wpctrl):
+    dead_count = 0
+    for wp in progress(wpctrl.wallpapers, text="{0.hash} ({0.path})"):
+        wp.check_paths()
+        if wp.path is None:
+            dead_count += 1
+    log.info("checked a total of %s wallpapers", len(wpctrl.wallpapers))
+    log.info("%s wallpapers have no path left", dead_count)
+    wpctrl.save_updates()
 
 
+
+
+# OBSOLETE
 def check_dead_paths(config):
     """List paths that no longer point to files."""
     wallpapers = config["wallpapers"]
@@ -61,7 +85,6 @@ def find_duplicates(config):
     hashes = dict()
     dupes = set()
 
-    signal.signal(signal.SIGINT, interrupt_signal_handler)
     info("Comparing hashes of " + str(len(wallpapers)) + " wallpapers…")
     bar = smooth_bar(len(wallpapers))
     for path, data in sorted(wallpapers.items()):
@@ -99,6 +122,3 @@ def find_duplicates(config):
         config.save()
         info("done")
 
-
-def interrupt_signal_handler(signal, frame):
-    die("Interrupted, exiting now!")

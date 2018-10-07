@@ -5,6 +5,7 @@ import subprocess
 import builtins
 import logging
 from operator import attrgetter
+from itertools import zip_longest
 from random import shuffle
 from urllib.parse import quote as urlquote
 from glob import iglob as glob
@@ -21,50 +22,38 @@ log = logging.getLogger(__name__)
 
 live_wallpaper_paths = ()
 
-def set_wallpaper_paths(wallpaper_paths):
+def _display_wallpapers(wallpaper_paths):
     """Low level wallpaper setter using feh"""
-    wallpaper_paths = tuple(wallpaper_paths)
-    args = ("feh", "--bg-fill", "--no-fehbg") + wallpaper_paths
+    args = ("feh", "--bg-fill", "--no-fehbg") + tuple(wallpaper_paths)
     try:
         subprocess.run(args=args, check=True, universal_newlines=True,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as cpe:
         log.warning("setting wallpapers failed '%s'", wallpaper_paths)
         log.debug(cpe.output)
-        for path in wallpaper_paths:
-            if not os.path.isfile(path):
-                raise FileNotFoundError("Wallpaper {} doesn't exist.".format(path)) from None
-            if not os.access(path, os.R_OK):
-                raise PermissionError("No permission to read wallpaper {}.".format(path)) from None
-        raise
-    else:
+        # raise
+        return False
+    return True
+
+def set_wallpaper_paths(wallpaper_paths):
+    wallpaper_paths = tuple(path if path else live for path, live in
+                            zip_longest(wallpaper_paths, live_wallpaper_paths))
+    if _display_wallpapers(wallpaper_paths):
         global live_wallpaper_paths
         live_wallpaper_paths = wallpaper_paths
 
 def set_wallpaper_path(wallpaper_path, screen_index=0):
-    set_wallpaper_paths(live_wallpaper_paths[:screen_index]
-                        + (wallpaper_path,)
-                        + live_wallpaper_paths[screen_index + 1:])
+    set_wallpaper_paths([None] * screen_index + [wallpaper_path])
 
 def show_wallpapers(wallpapers):
     wallpapers = tuple(wallpapers)
-    try:
-        set_wallpaper_paths(wp.path for wp in wallpapers)
-    except AttributeError as ae:
-        log.exception(ae)
-    except (FileNotFoundError, PermissionError):
-        for wp in wallpapers:
-            wp.check_paths()
-        set_wallpaper_paths(wp.path for wp in wallpapers)
+    for wp in wallpapers:
+        wp.check_paths()
+    set_wallpaper_paths(wp.path for wp in wallpapers)
 
 def show_wallpaper(wallpaper, screen_index=0):
-    try:
-        set_wallpaper_path(wallpaper.path, screen_index)
-    except AttributeError as ae:
-        log.exception(ae)
-    except (FileNotFoundError, PermissionError):
-        wallpaper.check_paths()
-        set_wallpaper_path(wallpaper.path, screen_index)
+    wallpaper.check_paths()
+    set_wallpaper_path(wallpaper.path, screen_index)
 
 
 def find_images(patterns):
@@ -96,7 +85,8 @@ class Wallpaper(Observable):
         try:
             return self.paths[0]
         except IndexError:
-            raise AttributeError("No valid path left for " + repr(self)) from None
+            return None
+            # raise AttributeError("No valid path left for " + repr(self)) from None
 
     @property
     def url(self):
@@ -138,7 +128,7 @@ class Wallpaper(Observable):
         self.modified = datetime.strptime(modified, self.TIME_FORMAT)
         self._rating = rating
         self._purity = purity
-        self.invalid_paths = invalid_paths or []
+        self.invalid_paths = set(invalid_paths or ())
         self.tags = tags or []
 
     def __repr__(self):
@@ -174,12 +164,19 @@ class Wallpaper(Observable):
 
     def check_paths(self):
         for path in self.paths:
-            if not os.path.isfile(path) or not os.access(path, os.R_OK):
-                log.warning("Invalidating wallpaper path '%s'", path)
-                self.paths.remove(path)
-                self.invalid_paths.append(path)
+            if not os.path.isfile(path):
+                self._invalidate_path(path, "File does not exist.")
+            elif not os.access(path, os.R_OK):
+                self._invalidate_path(path, "No permission to read file.")
         if not self.paths:
             log.warning("No valid paths left for wallpaper '%s'", self.hash)
+
+    @observed
+    def _invalidate_path(self, path, reason):
+        self.paths.remove(path)
+        self.invalid_paths.add(path)
+        log.warning("Invalidated wallpaper path '%s' (%s remaining). Reason: %s",
+                    path, len(self.paths), reason)
 
     @observed
     def toggle_tag(self, tag):
@@ -232,8 +229,10 @@ class WallpaperController:
     """Manages a collection of relevant wallpapers and takes care of some
     config related IO (TODO: isolate the IO)."""
 
-    def __init__(self, ui, config, sources=None, query="True", time_added=None,
-                 sort=False):
+    def __init__(self, ui, config, sources=None, query="True", sort=False):
+        self.config = config
+        self.stats = {"saved_updates": 0}
+
         self.wallpapers = []
         self.updated_wallpapers = set()
 
@@ -265,7 +264,8 @@ class WallpaperController:
         else:
             log.debug("Found %d matching wallpapers.", len(self.wallpapers))
 
-        ui.update_wallpaper_count(len(self.wallpapers))
+        if ui:
+            ui.update_wallpaper_count(len(self.wallpapers))
 
         if sort:
             self.wallpapers.sort(key=attrgetter("path"))
@@ -319,11 +319,24 @@ class WallpaperController:
     def notify(self, wallpaper, *_):
         self.updated_wallpapers.add(wallpaper)
 
-    def updated_json(self):
+    def save_updates(self):
+        if not self.updated_wallpapers:
+            return
+        updates = dict()
         now = datetime.now()
-        data = dict()
         for wp in self.updated_wallpapers:
             wp.modified = now
-            data[wp.hash] = wp.to_json()
+            updates[wp.hash] = wp.to_json()
+
+        self.config["wallpapers"].update(updates)
+        self.config.save()
+
         self.updated_wallpapers = set()
-        return data
+
+        updates_count = len(updates)
+        self.stats["saved_updates"] += updates_count
+        log.info("%d update%s %ssaved (%d total)",
+                 updates_count,
+                 "" if updates_count == 1 else "s",
+                 "NOT " if self.config.readonly else "",
+                 self.stats["saved_updates"])

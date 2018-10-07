@@ -292,6 +292,8 @@ class IterProgressSpinner(ProgressSpinner, IterProgressIndicator):
 
 def progress(items, total=None, **settings):
     """Iterator decorator shows progress while iterating."""
+    if not sys.stdout.isatty():
+        return items
     try:
         total = len(items) if total is None else total
     except TypeError:

@@ -122,7 +122,7 @@ class ScreenController:
                                   step=screen_count, offset=idx)
             log.debug("Initializing screen %d with %d wallpapers and properties %s",
                       idx, len(wallpapers), data)
-            screen = Screen(idx, wallpapers, **data)
+            screen = Screen(idx, wallpapers, **data, is_paused=True)
             screen.subscribe(ui)
             ui.update_screen(screen)
             self.screens.append(screen)
@@ -132,6 +132,8 @@ class ScreenController:
 
         self.selectable_screens = modlist(self.screens)
         self.selectable_screens.current.is_selected = True
+
+        self._update_active_screens()
 
     def update_ui(self, *_):
         """Update the moving parts of the UI that we can influence."""

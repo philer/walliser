@@ -13,50 +13,50 @@ from .core import Signal
 
 log = logging.getLogger(__name__)
 
-def rating_string(value, length=5, *, positive="+", negative="-",
-                  positive_bg=" ", negative_bg=" ", padding=" ", big="∞"):
-        """Get a rating as a visually pleasing, fixed length string.
+# def rating_string(value, length=5, *, positive="+", negative="-",
+#                   positive_bg=" ", negative_bg=" ", padding=" ", big="∞"):
+#         """Get a rating as a visually pleasing, fixed length string.
 
-        The following representations are tried in order to find one that
-        is short enough for the 'length' parameter:
-        (examples assuming default formatting strings)
-        > "+++  " or "--   "
-        #> "+ 30 " or "- 999" (disabled)
-        > "+3000" or "-9999"
-        #> "+ ∞  " or "- ∞"   (disabled)
-        > "+∞"    or "-∞"     (for length = 2 and value > 1)
-        > "+"     or "-"      (for length = 1 and value != 0)
-        > ""                  (for length = 0)
-        For a zero value only positive background is returned.
+#         The following representations are tried in order to find one that
+#         is short enough for the 'length' parameter:
+#         (examples assuming default formatting strings)
+#         > "+++  " or "--   "
+#         #> "+ 30 " or "- 999" (disabled)
+#         > "+3000" or "-9999"
+#         #> "+ ∞  " or "- ∞"   (disabled)
+#         > "+∞"    or "-∞"     (for length = 2 and value > 1)
+#         > "+"     or "-"      (for length = 1 and value != 0)
+#         > ""                  (for length = 0)
+#         For a zero value only positive background is returned.
 
-        Here are some cool characters:
-        [★☆🚫☺♥♡~✦✱*♀♂♻♲]
-        """
-        def options():
-            symbol, background = (
-                    (positive, positive_bg), (negative, negative_bg)
-                )[value < 0]
-            absval = abs(value)
-            yield absval * symbol, background
-            absval = str(absval)
-            # yield symbol + padding + absval, padding
-            yield symbol + absval, padding
-            # yield symbol + padding + big, padding
-            yield symbol + big, padding
-            yield symbol, padding
-            yield "",""
+#         Here are some cool characters:
+#         [★☆🚫☺♥♡~✦✱*♀♂♻♲]
+#         """
+#         def options():
+#             symbol, background = (
+#                     (positive, positive_bg), (negative, negative_bg)
+#                 )[value < 0]
+#             absval = abs(value)
+#             yield absval * symbol, background
+#             absval = str(absval)
+#             # yield symbol + padding + absval, padding
+#             yield symbol + absval, padding
+#             # yield symbol + padding + big, padding
+#             yield symbol + big, padding
+#             yield symbol, padding
+#             yield "",""
 
-        string, padchar = next((s,p) for s,p in options() if len(s) <= length)
-        return string.ljust(length, padchar)
+#         string, padchar = next((s,p) for s,p in options() if len(s) <= length)
+#         return string.ljust(length, padchar)
 
 
-def rating_to_string(rating, length=5):
-    return rating_string(rating, length,
-        positive="★", positive_bg="☆")
+# def rating_to_string(rating, length=5):
+#     return rating_string(rating, length,
+#         positive="★", positive_bg="☆")
 
-def purity_to_string(purity, length=5):
-    return rating_string(purity, length,
-        negative="♥", negative_bg="♡", positive="~", positive_bg="♡")
+# def purity_to_string(purity, length=5):
+#     return rating_string(purity, length,
+#         negative="♥", negative_bg="♡", positive="~", positive_bg="♡")
 
 def screen_to_string(screen, lines):
     """User friendly description of a screen with a wallpaper."""
@@ -65,7 +65,7 @@ def screen_to_string(screen, lines):
     wp = screen.current_wallpaper
     if lines > 1:
         return ("{selected}{current_or_paused} "
-                "[{rating}][{purity}] {format} {width:d}×{height:d}"
+                "[ {rating} | {purity} ] {format} {width:d}×{height:d}"
                 " {tags}"
                 "\n{selected}{url}").format(
             selected="│" if screen.is_selected else " ",
@@ -74,8 +74,8 @@ def screen_to_string(screen, lines):
             current_or_paused="⏵" if screen.is_current else
                               "⏸" if screen.is_paused else
                               " ",
-            rating=rating_to_string(wp.rating, 5),
-            purity=purity_to_string(wp.purity, 5),
+            rating=("☆" if wp.rating == 0 else "★·" + str(wp.rating)),
+            purity=("♡" if wp.purity == 0 else "♥·" + str(wp.purity)),
             width=wp.width,
             height=wp.height,
             format=wp.format,
@@ -89,8 +89,8 @@ def screen_to_string(screen, lines):
             current_or_paused="⏵" if screen.is_current else
                               "⏸" if screen.is_paused else
                               " ",
-            rating=rating_to_string(wp.rating, 2),
-            purity=purity_to_string(wp.purity, 2),
+            rating=("☆" if wp.rating == 0 else "★") + str(wp.rating),
+            purity=("♡" if wp.purity == 0 else "♥") + str(wp.purity),
             url=wp.url,
         )
 

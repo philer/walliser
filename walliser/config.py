@@ -23,9 +23,13 @@ def open_config_file(filename, mode="r"):
 class Config(dict):
     """A dictionary that can read and write itself to a JSON file"""
 
+    @property
+    def readonly(self):
+        return self._readonly
+
     def __init__(self, filename, readonly=False):
         self.filename = filename
-        self.readonly = readonly
+        self._readonly = readonly
         data = {}
         try:
             with open_config_file(filename, "rt") as config_file:

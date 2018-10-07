@@ -163,43 +163,18 @@ def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):
 ### CLI helpers ###
 
 # # ANSI escape sequences used to style and control output on the terminal (TTY)
-# ANSI_RED_BOLD      = "\033[1;31m"
-# ANSI_YELLOW_ITALIC = "\033[3;33m"
-# ANSI_NO_STYLE      = "\033[0m"
-# ANSI_ERASE_TO_EOL  = "\033[0K"  # same as "\033[K"
-
-# def info(message):
-#     print(message + ANSI_ERASE_TO_EOL)
-
-# def warning(message):
-#     print(ANSI_YELLOW_ITALIC + message + ANSI_NO_STYLE + ANSI_ERASE_TO_EOL)
-
-# def error(message):
-#     print(ANSI_RED_BOLD + message + ANSI_NO_STYLE + ANSI_ERASE_TO_EOL)
-
-class ANSI(str, enum.Enum):
-    """ANSI escape sequences; style and control output on the terminal (TTY)"""
-    # BLACK         = "\033[30m"
-    # RED           = "\033[31m"
-    # GREEN         = "\033[32m"
-    # YELLOW        = "\033[33m"
-    BLUE          = "\033[34m"
-    # PURPLE        = "\033[35m"
-    # CYAN          = "\033[36m"
-    RED_BOLD      = "\033[1;31m"
-    YELLOW_ITALIC = "\033[3;33m"
-    NO_STYLE      = "\033[0m"
-    ERASE_TO_EOL  = "\033[0K"  # same as "\033[K"
-    ERASE_LINE_n  = "\033[{}K"
-
-logger = logging.getLogger(__name__)
-info = logger.info
-warning = logger.warning
-error = logger.error
-
-def die(message="Exiting…"):
-    error(message)
-    sys.exit(1)
+# ANSI_BLACK         = "\033[30m"
+# ANSI_RED           = "\033[31m"
+# ANSI_GREEN         = "\033[32m"
+# ANSI_YELLOW        = "\033[33m"
+ANSI_BLUE          = "\033[34m"
+# ANSI_PURPLE        = "\033[35m"
+# ANSI_CYAN          = "\033[36m"
+ANSI_RED_BOLD      = "\033[1;31m"
+ANSI_YELLOW_ITALIC = "\033[3;33m"
+ANSI_NO_STYLE      = "\033[0m"
+ANSI_ERASE_TO_EOL  = "\033[0K"  # same as "\033[K"
+ANSI_ERASE_LINE_n  = "\033[{}K"
 
 
 class CallbackLogHandler(logging.Handler):
@@ -239,19 +214,19 @@ class BufferedLogHandler(logging.Handler):
 class FancyLogFormatter(logging.Formatter):
     """Log formatter for colorful terminal output."""
     styles = {
-        logging.INFO:     ANSI.BLUE,
-        logging.WARNING:  ANSI.YELLOW_ITALIC,
-        logging.ERROR:    ANSI.RED_BOLD,
-        logging.CRITICAL: ANSI.RED_BOLD,
+        logging.INFO:     ANSI_BLUE,
+        logging.WARNING:  ANSI_YELLOW_ITALIC,
+        logging.ERROR:    ANSI_RED_BOLD,
+        logging.CRITICAL: ANSI_RED_BOLD,
     }
 
     def format(self, record):
         message = super().format(record)
         try:
-            message = self.styles[record.levelno] + message + ANSI.NO_STYLE
+            message = self.styles[record.levelno] + message + ANSI_NO_STYLE
         except KeyError:
             pass
-        return message + ANSI.ERASE_TO_EOL
+        return message + ANSI_ERASE_TO_EOL
 
 
 _time_units = {

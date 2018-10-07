@@ -7,7 +7,7 @@ Usage:
            [-c CONFIG_FILE] [--readonly]
            [--quiet | -v | -vv | -vvv]
            [--] [FILES/DIRS ...]
-  walliser --maintenance [-c CONFIG_FILE]
+  walliser --maintenance [-c CONFIG_FILE] [--readonly]
   walliser -h | --help | --version
 
 Options:
@@ -22,7 +22,7 @@ Options:
                  will use WALLISER_DATABASE_FILE from environment variable or
                  default to ~/.walliser.json.gz instead.
      --readonly  Don't write anything to the configuration file.
-     --maintenance  Deprecated
+     --maintenance
   -v --verbose   Show more and more info.
      --quiet     Don't write any output after exiting fullscreen.
   -h --help      Show this help message and exit.
@@ -84,7 +84,8 @@ def main():
 
         if args["--maintenance"]:
             from walliser import maintenance
-            maintenance.run(config)
+            wallpapers = WallpaperController(config=config, ui=None, sort=True)
+            maintenance.run(wallpapers)
         else:
             ui = Ui(logging_handler)
             wallpapers = WallpaperController(
