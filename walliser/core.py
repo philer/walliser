@@ -33,6 +33,8 @@ class Signal(str, Enum, metaclass=AutoStrEnumMeta):
 
     TOGGLE_TAG
 
+    MOVE_LEFT, MOVE_DOWN, MOVE_UP, MOVE_RIGHT
+
     def __init__(self, _):
         self._subscribers = {}
 
@@ -125,6 +127,22 @@ class Core:
             self.extend_timeout(3, self.update_wallpapers)
             self.set_timeout(10, self.save_config)
 
+        def move_up():
+            self.selected_wallpaper.y_offset += 10
+            scrctrl.show_wallpapers()
+
+        def move_down():
+            self.selected_wallpaper.y_offset -= 10
+            scrctrl.show_wallpapers()
+
+        def move_left():
+            self.selected_wallpaper.x_offset += 10
+            scrctrl.show_wallpapers()
+
+        def move_right():
+            self.selected_wallpaper.x_offset -= 10
+            scrctrl.show_wallpapers()
+
         def toggle_tag():
             tags = self.ui.input("tags: ")
             for tag in filter(None, map(str.strip, tags.split(','))):
@@ -151,6 +169,10 @@ class Core:
         Signal.INCREMENT_PURITY.subscribe(inc_purity)
         Signal.DECREMENT_PURITY.subscribe(dec_purity)
         Signal.TOGGLE_TAG.subscribe(toggle_tag)
+        Signal.MOVE_UP.subscribe(move_up)
+        Signal.MOVE_DOWN.subscribe(move_down)
+        Signal.MOVE_LEFT.subscribe(move_left)
+        Signal.MOVE_RIGHT.subscribe(move_right)
 
 
     def update_wallpapers(self):

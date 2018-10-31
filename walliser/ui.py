@@ -66,6 +66,7 @@ def screen_to_string(screen, lines):
     if lines > 1:
         return ("{selected}{current_or_paused} "
                 "[ {rating} | {purity} ] {format} {width:d}×{height:d}"
+                "{offsets}"
                 " {tags}"
                 "\n{selected}{url}").format(
             selected="│" if screen.is_selected else " ",
@@ -81,6 +82,8 @@ def screen_to_string(screen, lines):
             format=wp.format,
             tags="(" + ",".join(wp.tags) + ")" if wp.tags else "",
             url=wp.url,
+            offsets=(" ({:+},{:+})".format(wp.x_offset, wp.y_offset)
+                     if (wp.x_offset or wp.y_offset) else "")
         )
     else:
         return ("{selected}{current_or_paused}"
@@ -150,6 +153,10 @@ class Ui:
         'd':               Signal.INCREMENT_PURITY,
         'e':               Signal.DECREMENT_PURITY,
         't':               Signal.TOGGLE_TAG,
+        'h':               Signal.MOVE_LEFT,
+        'j':               Signal.MOVE_DOWN,
+        'k':               Signal.MOVE_UP,
+        'l':               Signal.MOVE_RIGHT,
     }
 
     def __init__(self, cli_log_handler):

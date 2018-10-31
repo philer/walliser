@@ -47,9 +47,24 @@ def set_wallpaper_path(wallpaper_path, screen_index=0):
 
 def show_wallpapers(wallpapers):
     wallpapers = tuple(wallpapers)
+    paths = []
     for wp in wallpapers:
         wp.check_paths()
-    set_wallpaper_paths(wp.path for wp in wallpapers)
+        if wp.x_offset or wp.y_offset:
+            path = "/tmp/" + str(wp.hash) + ".jpg"  # TODO
+            scr_width, scr_height = 1920, 1080  # TODO
+            with Image.open(wp.path) as img:
+                scale = max(scr_width / img.width, scr_height / img.height)
+                img = img.resize((int(img.width * scale), int(img.height * scale)))
+                left = (img.width - scr_width) / 2 + wp.x_offset
+                top = (img.height - scr_height) / 2 + wp.y_offset
+                img = img.crop((left, top, left + scr_width, top + scr_height))
+                img.save(path)
+            paths.append(path)
+        else:
+            paths.append(wp.path)
+    # set_wallpaper_paths(wp.path for wp in wallpapers)
+    set_wallpaper_paths(paths)
 
 def show_wallpaper(wallpaper, screen_index=0):
     wallpaper.check_paths()
@@ -110,10 +125,30 @@ class Wallpaper(Observable):
     def purity(self, purity):
         self._purity = purity
 
+    @property
+    def x_offset(self):
+        return self._x_offset
+
+    @x_offset.setter
+    @observed
+    def x_offset(self, x_offset):
+        self._x_offset = x_offset
+
+    @property
+    def y_offset(self):
+        return self._y_offset
+
+    @y_offset.setter
+    @observed
+    def y_offset(self, y_offset):
+        self._y_offset = y_offset
+
+
     __slots__ = ('hash', 'int_hash', 'paths', 'invalid_paths',
                  'format', 'width', 'height',
                  'added', 'modified',
                  '_rating', '_purity', 'tags',
+                 '_x_offset', '_y_offset',
                 )
     def __init__(self, hash, paths, format, width, height, added, modified,
                  invalid_paths=None, rating=0, purity=0, tags=None):
@@ -130,6 +165,7 @@ class Wallpaper(Observable):
         self._purity = purity
         self.invalid_paths = invalid_paths or []
         self.tags = tags or []
+        self._x_offset = self._y_offset = 0
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + self.hash
