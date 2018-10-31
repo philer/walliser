@@ -36,10 +36,10 @@ def _display_wallpapers(wallpaper_paths):
     return True
 
 def set_wallpaper_paths(wallpaper_paths):
+    global live_wallpaper_paths
     wallpaper_paths = tuple(path if path else live for path, live in
                             zip_longest(wallpaper_paths, live_wallpaper_paths))
     if _display_wallpapers(wallpaper_paths):
-        global live_wallpaper_paths
         live_wallpaper_paths = wallpaper_paths
 
 def set_wallpaper_path(wallpaper_path, screen_index=0):
@@ -128,7 +128,7 @@ class Wallpaper(Observable):
         self.modified = datetime.strptime(modified, self.TIME_FORMAT)
         self._rating = rating
         self._purity = purity
-        self.invalid_paths = set(invalid_paths or ())
+        self.invalid_paths = invalid_paths or []
         self.tags = tags or []
 
     def __repr__(self):
@@ -174,7 +174,8 @@ class Wallpaper(Observable):
     @observed
     def _invalidate_path(self, path, reason):
         self.paths.remove(path)
-        self.invalid_paths.add(path)
+        if path not in self.invalid_paths:
+            self.invalid_paths.append(path)
         log.warning("Invalidated wallpaper path '%s' (%s remaining). Reason: %s",
                     path, len(self.paths), reason)
 
