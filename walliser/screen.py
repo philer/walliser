@@ -30,6 +30,11 @@ class Screen(Observable):
         return self._wallpapers.current
 
     @property
+    def current_wallpaper_scale(self):
+        wp = self._wallpapers.current
+        return wp.scale * max(self.width / wp.width, self.height / wp.height)
+
+    @property
     def is_current(self):
         return self._is_current
 

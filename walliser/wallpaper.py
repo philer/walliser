@@ -50,17 +50,8 @@ def show_wallpapers(wallpapers):
     paths = []
     for wp in wallpapers:
         wp.check_paths()
-        if wp.x_offset or wp.y_offset:
-            path = "/tmp/" + str(wp.hash) + ".jpg"  # TODO
-            scr_width, scr_height = 1920, 1080  # TODO
-            with Image.open(wp.path) as img:
-                scale = max(scr_width / img.width, scr_height / img.height)
-                img = img.resize((int(img.width * scale), int(img.height * scale)))
-                left = (img.width - scr_width) / 2 + wp.x_offset
-                top = (img.height - scr_height) / 2 + wp.y_offset
-                img = img.crop((left, top, left + scr_width, top + scr_height))
-                img.save(path)
-            paths.append(path)
+        if wp.x_offset or wp.y_offset or wp.scale != 1:
+            paths.append(transform_wallpaper(wp))
         else:
             paths.append(wp.path)
     # set_wallpaper_paths(wp.path for wp in wallpapers)
@@ -69,6 +60,18 @@ def show_wallpapers(wallpapers):
 def show_wallpaper(wallpaper, screen_index=0):
     wallpaper.check_paths()
     set_wallpaper_path(wallpaper.path, screen_index)
+
+
+def transform_wallpaper(wp, screen_width=1920, screen_height=1080):
+    path = "/tmp/" + str(wp.hash) + ".jpg"  # TODO
+    scale = wp.scale * max(screen_width / wp.width, screen_height / wp.height)
+    with Image.open(wp.path) as img:
+        img = img.resize((int(wp.width * scale), int(wp.height * scale)))
+        left = (img.width - screen_width) / 2 + wp.x_offset
+        top = (img.height - screen_height) / 2 + wp.y_offset
+        img = img.crop((left, top, left + screen_width, top + screen_height))
+        img.save(path)
+    return path
 
 
 def find_images(patterns):
@@ -143,12 +146,21 @@ class Wallpaper(Observable):
     def y_offset(self, y_offset):
         self._y_offset = y_offset
 
+    @property
+    def scale(self):
+        return self._scale
+
+    @scale.setter
+    @observed
+    def scale(self, scale):
+        self._scale = scale
+
 
     __slots__ = ('hash', 'int_hash', 'paths', 'invalid_paths',
                  'format', 'width', 'height',
                  'added', 'modified',
                  '_rating', '_purity', 'tags',
-                 '_x_offset', '_y_offset',
+                 '_x_offset', '_y_offset', '_scale'
                 )
     def __init__(self, hash, paths, format, width, height, added, modified,
                  invalid_paths=None, rating=0, purity=0, tags=None):
@@ -166,6 +178,7 @@ class Wallpaper(Observable):
         self.invalid_paths = invalid_paths or []
         self.tags = tags or []
         self._x_offset = self._y_offset = 0
+        self._scale = 1
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + self.hash

@@ -34,6 +34,7 @@ class Signal(str, Enum, metaclass=AutoStrEnumMeta):
     TOGGLE_TAG
 
     MOVE_LEFT, MOVE_DOWN, MOVE_UP, MOVE_RIGHT
+    ZOOM_IN, ZOOM_OUT, ZOOM_FULL, RESET_ZOOM
 
     def __init__(self, _):
         self._subscribers = {}
@@ -97,59 +98,6 @@ class Core:
                 self.set_timeout(self.interval, self.update_wallpapers)
             return wrapper
 
-        def next_on_selected():
-            """Update selected (or current) screen to the next wallpaper."""
-            self.selected_screen.next_wallpaper()
-            self.set_timeout(self.interval, self.update_wallpapers)
-
-        def prev_on_selected():
-            """Update selected (or current) screen to the previous wallpaper."""
-            self.selected_screen.prev_wallpaper()
-            self.set_timeout(self.interval, self.update_wallpapers)
-
-        def inc_rating():
-            self.selected_wallpaper.rating += 1
-            self.extend_timeout(3, self.update_wallpapers)
-            self.set_timeout(10, self.save_config)
-
-        def dec_rating():
-            self.selected_wallpaper.rating -= 1
-            self.extend_timeout(3, self.update_wallpapers)
-            self.set_timeout(10, self.save_config)
-
-        def inc_purity():
-            self.selected_wallpaper.purity += 1
-            self.extend_timeout(3, self.update_wallpapers)
-            self.set_timeout(10, self.save_config)
-
-        def dec_purity():
-            self.selected_wallpaper.purity -= 1
-            self.extend_timeout(3, self.update_wallpapers)
-            self.set_timeout(10, self.save_config)
-
-        def move_up():
-            self.selected_wallpaper.y_offset += 10
-            scrctrl.show_wallpapers()
-
-        def move_down():
-            self.selected_wallpaper.y_offset -= 10
-            scrctrl.show_wallpapers()
-
-        def move_left():
-            self.selected_wallpaper.x_offset += 10
-            scrctrl.show_wallpapers()
-
-        def move_right():
-            self.selected_wallpaper.x_offset -= 10
-            scrctrl.show_wallpapers()
-
-        def toggle_tag():
-            tags = self.ui.input("tags: ")
-            for tag in filter(None, map(str.strip, tags.split(','))):
-                self.selected_wallpaper.toggle_tag(tag)
-                self.set_timeout(10, self.save_config)
-            self.extend_timeout(3, self.update_wallpapers)
-
         scrctrl = self.screen_controller
         Signal.QUIT.subscribe(self.interrupt)
         Signal.SAVE.subscribe(self.save_config)
@@ -162,18 +110,93 @@ class Core:
         Signal.NEXT_SCREEN.subscribe(scrctrl.select_next)
         Signal.PREV_SCREEN.subscribe(scrctrl.select_prev)
         Signal.TOGGLE_SCREEN.subscribe(scrctrl.pause_unpause_selected)
-        Signal.NEXT_ON_SCREEN.subscribe(next_on_selected)
-        Signal.PREV_ON_SCREEN.subscribe(prev_on_selected)
-        Signal.INCREMENT_RATING.subscribe(inc_rating)
-        Signal.DECREMENT_RATING.subscribe(dec_rating)
-        Signal.INCREMENT_PURITY.subscribe(inc_purity)
-        Signal.DECREMENT_PURITY.subscribe(dec_purity)
-        Signal.TOGGLE_TAG.subscribe(toggle_tag)
-        Signal.MOVE_UP.subscribe(move_up)
-        Signal.MOVE_DOWN.subscribe(move_down)
-        Signal.MOVE_LEFT.subscribe(move_left)
-        Signal.MOVE_RIGHT.subscribe(move_right)
 
+        @Signal.NEXT_ON_SCREEN.subscribe
+        def next_on_selected():
+            """Update selected (or current) screen to the next wallpaper."""
+            self.selected_screen.next_wallpaper()
+            self.set_timeout(self.interval, self.update_wallpapers)
+
+        @Signal.PREV_ON_SCREEN.subscribe
+        def prev_on_selected():
+            """Update selected (or current) screen to the previous wallpaper."""
+            self.selected_screen.prev_wallpaper()
+            self.set_timeout(self.interval, self.update_wallpapers)
+
+        @Signal.INCREMENT_RATING.subscribe
+        def inc_rating():
+            self.selected_wallpaper.rating += 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        @Signal.DECREMENT_RATING.subscribe
+        def dec_rating():
+            self.selected_wallpaper.rating -= 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        @Signal.INCREMENT_PURITY.subscribe
+        def inc_purity():
+            self.selected_wallpaper.purity += 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        @Signal.DECREMENT_PURITY.subscribe
+        def dec_purity():
+            self.selected_wallpaper.purity -= 1
+            self.extend_timeout(3, self.update_wallpapers)
+            self.set_timeout(10, self.save_config)
+
+        @Signal.TOGGLE_TAG.subscribe
+        def toggle_tag():
+            tags = self.ui.input("tags: ")
+            for tag in filter(None, map(str.strip, tags.split(','))):
+                self.selected_wallpaper.toggle_tag(tag)
+                self.set_timeout(10, self.save_config)
+            self.extend_timeout(3, self.update_wallpapers)
+
+        @Signal.MOVE_UP.subscribe
+        def move_up():
+            self.selected_wallpaper.y_offset += 10
+            scrctrl.show_wallpapers()
+
+        @Signal.MOVE_DOWN.subscribe
+        def move_down():
+            self.selected_wallpaper.y_offset -= 10
+            scrctrl.show_wallpapers()
+
+        @Signal.MOVE_LEFT.subscribe
+        def move_left():
+            self.selected_wallpaper.x_offset += 10
+            scrctrl.show_wallpapers()
+
+        @Signal.MOVE_RIGHT.subscribe
+        def move_right():
+            self.selected_wallpaper.x_offset -= 10
+            scrctrl.show_wallpapers()
+
+        @Signal.ZOOM_IN.subscribe
+        def zoom_in():
+            self.selected_wallpaper.scale += .05
+            scrctrl.show_wallpapers()
+
+        @Signal.ZOOM_OUT.subscribe
+        def zoom_out():
+            self.selected_wallpaper.scale -= .05
+            scrctrl.show_wallpapers()
+
+        @Signal.ZOOM_FULL.subscribe
+        def zoom_full():
+            wp, scr = self.selected_wallpaper, self.selected_screen
+            wp.scale = 1 / max(scr.width / wp.width, scr.height / wp.height)
+            scrctrl.show_wallpapers()
+
+        @Signal.RESET_ZOOM.subscribe
+        def reset_zoom():
+            self.selected_wallpaper.scale = 1
+            self.selected_wallpaper.x_offset = 0
+            self.selected_wallpaper.y_offset = 0
+            scrctrl.show_wallpapers()
 
     def update_wallpapers(self):
         self.screen_controller.next()

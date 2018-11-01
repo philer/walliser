@@ -82,8 +82,9 @@ def screen_to_string(screen, lines):
             format=wp.format,
             tags="(" + ",".join(wp.tags) + ")" if wp.tags else "",
             url=wp.url,
-            offsets=(" ({:+},{:+})".format(wp.x_offset, wp.y_offset)
-                     if (wp.x_offset or wp.y_offset) else "")
+            offsets=(f" ({wp.x_offset:+},{wp.y_offset:+},{screen.current_wallpaper_scale:.0%})"
+                     if wp.x_offset or wp.y_offset or wp.scale != 1
+                     else "")
         )
     else:
         return ("{selected}{current_or_paused}"
@@ -157,6 +158,10 @@ class Ui:
         'j':               Signal.MOVE_DOWN,
         'k':               Signal.MOVE_UP,
         'l':               Signal.MOVE_RIGHT,
+        'z':               Signal.ZOOM_IN,
+        'u':               Signal.ZOOM_OUT,
+        '1':               Signal.ZOOM_FULL,
+        '0':               Signal.RESET_ZOOM,
     }
 
     def __init__(self, cli_log_handler):
