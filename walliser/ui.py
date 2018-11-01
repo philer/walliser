@@ -211,6 +211,7 @@ class Ui:
 
         # hide cursor
         curses.curs_set(0)
+        curses.mousemask(curses.BUTTON1_CLICKED)
         # self.root_win.nodelay(1)
 
     def exit_curses(self):
@@ -241,6 +242,10 @@ class Ui:
 
         if char == curses.ERR:
             return False
+        if char == curses.KEY_MOUSE:
+            id, x, y, z, bstate = curses.getmouse()
+            log.debug(f"mouse event: {id}, {x}, {y}, {z}, {bstate}")
+            Signal.OPEN.trigger()
         if char == curses.KEY_RESIZE:
             self.layout()
             self.refresh_header()

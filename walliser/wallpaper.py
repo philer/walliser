@@ -228,6 +228,9 @@ class Wallpaper(Observable):
         log.warning("Invalidated wallpaper path '%s' (%s remaining). Reason: %s",
                     path, len(self.paths), reason)
 
+    def open(self):
+        subprocess.Popen(args=("/usr/bin/eog", self.path))
+
     @observed
     def toggle_tag(self, tag):
         try:

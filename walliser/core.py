@@ -36,6 +36,8 @@ class Signal(str, Enum, metaclass=AutoStrEnumMeta):
     MOVE_LEFT, MOVE_DOWN, MOVE_UP, MOVE_RIGHT
     ZOOM_IN, ZOOM_OUT, ZOOM_FULL, RESET_ZOOM
 
+    OPEN
+
     def __init__(self, _):
         self._subscribers = {}
 
@@ -197,6 +199,10 @@ class Core:
             self.selected_wallpaper.x_offset = 0
             self.selected_wallpaper.y_offset = 0
             scrctrl.show_wallpapers()
+
+        @Signal.OPEN.subscribe
+        def open():
+            self.selected_wallpaper.open()
 
     def update_wallpapers(self):
         self.screen_controller.next()
