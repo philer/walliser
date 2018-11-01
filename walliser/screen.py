@@ -109,9 +109,8 @@ class ScreenController:
         """Return selected screen. If none is selected select current_screen."""
         return self.selectable_screens.current
 
-    def __init__(self, ui, wallpaper_controller):
+    def __init__(self, ui, wallpapers):
         self.ui = ui
-        self.wallpaper_controller = wallpaper_controller
 
         screens_data = tuple(get_screens_data())
         if not screens_data:
@@ -123,11 +122,10 @@ class ScreenController:
 
         self.screens = []
         for idx, data in enumerate(screens_data):
-            wallpapers = steplist(self.wallpaper_controller.wallpapers,
-                                  step=screen_count, offset=idx)
+            wps = steplist(wallpapers, step=screen_count, offset=idx)
             log.debug("Initializing screen %d with %d wallpapers and properties %s",
-                      idx, len(wallpapers), data)
-            screen = Screen(idx, wallpapers, **data, is_paused=True)
+                      idx, len(wps), data)
+            screen = Screen(idx, wps, **data, is_paused=True)
             screen.subscribe(ui)
             ui.update_screen(screen)
             self.screens.append(screen)

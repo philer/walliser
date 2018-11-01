@@ -84,18 +84,18 @@ def main():
 
         if args["--maintenance"]:
             from walliser import maintenance
-            wallpapers = WallpaperController(config=config, ui=None, sort=True)
-            maintenance.run(wallpapers)
+            wpctrl = WallpaperController(config=config, ui=None, sort=True)
+            maintenance.run(wpctrl)
         else:
             ui = Ui(logging_handler)
-            wallpapers = WallpaperController(
+            wpctrl = WallpaperController(
                 ui,
                 config,
                 sources=args["FILES/DIRS"],
                 query=args["--query"],
                 sort=args["--sort"],
             )
-            Core(ui, config, wallpapers, interval=float(args["--interval"]))
+            Core(ui, config, wpctrl, interval=float(args["--interval"]))
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception as e:

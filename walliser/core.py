@@ -64,17 +64,17 @@ class Core:
     def selected_wallpaper(self):
         return self.selected_screen.current_wallpaper
 
-    def __init__(self, ui, config, wallpapers, interval=5.0):
+    def __init__(self, ui, config, wallpaper_controller, interval=5.0):
         self.ui = ui
         self.config = config
-        self.wallpapers = wallpapers
+        self.wpctrl = wallpaper_controller
 
         self.timeout_callbacks = {}
         self.interval = interval
         self.ui.update_interval(interval)
 
         with self.ui:
-            self.screen_controller = ScreenController(ui, self.wallpapers)
+            self.screen_controller = ScreenController(ui, self.wpctrl.wallpapers)
             self.screen_controller.show_wallpapers()
 
             signal.signal(signal.SIGINT, self.interrupt)
@@ -87,7 +87,7 @@ class Core:
 
     def save_config(self):
         self.clear_timeout(self.save_config)
-        self.wallpapers.save_updates()
+        self.wpctrl.save_updates()
 
     def assign_ui_listeners(self):
         """Set up Ui interaction listeners."""
