@@ -5,9 +5,8 @@ import subprocess
 import builtins
 import logging
 from operator import attrgetter
-from itertools import zip_longest
 from random import shuffle
-from urllib.parse import quote as urlquote
+# from urllib.parse import quote as urlquote
 from glob import iglob as glob
 import re
 from datetime import datetime
@@ -19,59 +18,6 @@ from .progress import progress
 
 
 log = logging.getLogger(__name__)
-
-live_wallpaper_paths = ()
-
-def _display_wallpapers(wallpaper_paths):
-    """Low level wallpaper setter using feh"""
-    args = ("feh", "--bg-fill", "--no-fehbg") + tuple(wallpaper_paths)
-    try:
-        subprocess.run(args=args, check=True, universal_newlines=True,
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as cpe:
-        log.warning("setting wallpapers failed '%s'", wallpaper_paths)
-        log.debug(cpe.output)
-        # raise
-        return False
-    return True
-
-def set_wallpaper_paths(wallpaper_paths):
-    global live_wallpaper_paths
-    wallpaper_paths = tuple(path if path else live for path, live in
-                            zip_longest(wallpaper_paths, live_wallpaper_paths))
-    if _display_wallpapers(wallpaper_paths):
-        live_wallpaper_paths = wallpaper_paths
-
-def set_wallpaper_path(wallpaper_path, screen_index=0):
-    set_wallpaper_paths([None] * screen_index + [wallpaper_path])
-
-def show_wallpapers(wallpapers):
-    wallpapers = tuple(wallpapers)
-    paths = []
-    for wp in wallpapers:
-        wp.check_paths()
-        if wp.x_offset or wp.y_offset or wp.scale != 1:
-            paths.append(transform_wallpaper(wp))
-        else:
-            paths.append(wp.path)
-    # set_wallpaper_paths(wp.path for wp in wallpapers)
-    set_wallpaper_paths(paths)
-
-def show_wallpaper(wallpaper, screen_index=0):
-    wallpaper.check_paths()
-    set_wallpaper_path(wallpaper.path, screen_index)
-
-
-def transform_wallpaper(wp, screen_width=1920, screen_height=1080):
-    path = "/tmp/" + str(wp.hash) + ".jpg"  # TODO
-    scale = wp.scale * max(screen_width / wp.width, screen_height / wp.height)
-    with Image.open(wp.path) as img:
-        img = img.resize((int(wp.width * scale), int(wp.height * scale)))
-        left = (img.width - screen_width) / 2 + wp.x_offset
-        top = (img.height - screen_height) / 2 + wp.y_offset
-        img = img.crop((left, top, left + screen_width, top + screen_height))
-        img.save(path)
-    return path
 
 
 def find_images(patterns):
@@ -106,9 +52,9 @@ class Wallpaper(Observable):
             return None
             # raise AttributeError("No valid path left for " + repr(self)) from None
 
-    @property
-    def url(self):
-        return "file://" + urlquote(self.path)
+    # @property
+    # def url(self):
+    #     return "file://" + urlquote(self.path)
 
     @property
     def rating(self):
@@ -211,23 +157,6 @@ class Wallpaper(Observable):
                 data[attr] = value
         return data
 
-    def check_paths(self):
-        for path in self.paths:
-            if not os.path.isfile(path):
-                self._invalidate_path(path, "File does not exist.")
-            elif not os.access(path, os.R_OK):
-                self._invalidate_path(path, "No permission to read file.")
-        if not self.paths:
-            log.warning("No valid paths left for wallpaper '%s'", self.hash)
-
-    @observed
-    def _invalidate_path(self, path, reason):
-        self.paths.remove(path)
-        if path not in self.invalid_paths:
-            self.invalid_paths.append(path)
-        log.warning("Invalidated wallpaper path '%s' (%s remaining). Reason: %s",
-                    path, len(self.paths), reason)
-
     def open(self):
         subprocess.Popen(args=("/usr/bin/eog", self.path))
 
@@ -239,8 +168,43 @@ class Wallpaper(Observable):
             self.tags.append(tag)
             self.tags.sort()
 
-    def show(self, screen_index=0):
-        show_wallpaper(self, screen_index)
+    def check_paths(self):
+        for path in self.paths:
+            if not os.path.isfile(path):
+                self._invalidate_path(path, "File does not exist.")
+            elif not os.access(path, os.R_OK):
+                self._invalidate_path(path, "No permission to read file.")
+        if not self.paths:
+            log.warning("No valid paths left for wallpaper '%s'", self.hash)
+            return False
+        return True
+
+    @observed
+    def _invalidate_path(self, path, reason):
+        self.paths.remove(path)
+        if path not in self.invalid_paths:
+            self.invalid_paths.append(path)
+        log.warning("Invalidated wallpaper path '%s' (%s remaining). Reason: %s",
+                    path, len(self.paths), reason)
+
+    def transformed(self, screen_width=1920, screen_height=1080):
+        if self.x_offset or self.y_offset or self.scale != 1:
+            scale = self.scale * max(screen_width / self.width,
+                                     screen_height / self.height)
+            path = "/tmp/walliser_{:x}.jpg".format(hash(self)
+                                      ^ hash(self.x_offset)
+                                      ^ hash(self.y_offset)
+                                      ^ hash(self.scale))
+            with Image.open(self.path) as img:
+                img = img.resize((int(self.width * scale),
+                                  int(self.height * scale)))
+                left = (img.width - screen_width) / 2 + self.x_offset
+                top = (img.height - screen_height) / 2 + self.y_offset
+                img = img.crop((left, top, left + screen_width,
+                                           top + screen_height))
+                img.save(path)
+            return path
+        return self.path
 
 
 def make_query(expression):
@@ -282,7 +246,7 @@ class WallpaperController:
     """Manages a collection of relevant wallpapers and takes care of some
     config related IO (TODO: isolate the IO)."""
 
-    def __init__(self, ui, config, sources=None, query="True", sort=False):
+    def __init__(self, config, sources=None, query="True", sort=False):
         self.config = config
         self.stats = {"saved_updates": 0}
 
@@ -316,9 +280,6 @@ class WallpaperController:
             raise Exception('No matching wallpapers found. Query: "' + query_expression + '"')
         else:
             log.debug("Found %d matching wallpapers.", len(self.wallpapers))
-
-        if ui:
-            ui.update_wallpaper_count(len(self.wallpapers))
 
         if sort:
             self.wallpapers.sort(key=attrgetter("path"))

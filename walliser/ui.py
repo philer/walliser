@@ -66,7 +66,7 @@ def screen_to_string(screen, lines):
     if lines > 1:
         return ("{selected}{current_or_paused} "
                 "[ {rating} | {purity} ] {format} {width:d}×{height:d}"
-                "{offsets}"
+                # "{offsets}"
                 " {tags}"
                 "\n{selected}{url}").format(
             selected="│" if screen.is_selected else " ",
@@ -82,9 +82,9 @@ def screen_to_string(screen, lines):
             format=wp.format,
             tags="(" + ",".join(wp.tags) + ")" if wp.tags else "",
             url=wp.url,
-            offsets=(f" ({wp.x_offset:+},{wp.y_offset:+},{screen.current_wallpaper_scale:.0%})"
-                     if wp.x_offset or wp.y_offset or wp.scale != 1
-                     else "")
+            # offsets=(f" ({wp.x_offset:+},{wp.y_offset:+},{screen.current_wallpaper_scale:.0%})"
+            #          if wp.x_offset or wp.y_offset or wp.scale != 1
+            #          else "")
         )
     else:
         return ("{selected}{current_or_paused}"
@@ -164,8 +164,7 @@ class Ui:
         '0':               Signal.RESET_ZOOM,
     }
 
-    def __init__(self, cli_log_handler):
-        self.cli_log_handler = cli_log_handler
+    def __init__(self):
         self.header_string = ""
         self.footer_string = ""
         self.info_string = ""
@@ -177,7 +176,6 @@ class Ui:
         # self.update_header(screen_count, wallpaper_count, interval)
 
     def __enter__(self):
-        self.cli_log_handler.auto_flush = False
         self.init_curses()
         self.log_handler = CallbackLogHandler(self.info)
         logging.getLogger(__package__).addHandler(self.log_handler)
@@ -187,8 +185,6 @@ class Ui:
     def __exit__(self, exc_type, exc_value, traceback):
         logging.getLogger(__package__).removeHandler(self.log_handler)
         self.exit_curses()
-        self.cli_log_handler.auto_flush = True
-        self.cli_log_handler.flush()
 
     def init_curses(self):
         """Set up curses interface. (compare curses.wrapper)"""
@@ -244,7 +240,7 @@ class Ui:
             return False
         if char == curses.KEY_MOUSE:
             id, x, y, z, bstate = curses.getmouse()
-            log.debug(f"mouse event: {id}, {x}, {y}, {z}, {bstate}")
+            # log.debug(f"mouse event: {id}, {x}, {y}, {z}, {bstate}")
             Signal.OPEN.trigger()
         if char == curses.KEY_RESIZE:
             self.layout()

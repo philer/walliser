@@ -36,7 +36,7 @@ from docopt import docopt
 
 from . import __version__
 from .util import BufferedLogHandler, FancyLogFormatter
-from .ui import Ui
+# from .ui import Ui
 from .config import Config
 from .wallpaper import WallpaperController
 from .core import Core
@@ -87,15 +87,14 @@ def main():
             wpctrl = WallpaperController(config=config, ui=None, sort=True)
             maintenance.run(wpctrl)
         else:
-            ui = Ui(logging_handler)
+            logging_handler.auto_flush = False
             wpctrl = WallpaperController(
-                ui,
                 config,
                 sources=args["FILES/DIRS"],
                 query=args["--query"],
                 sort=args["--sort"],
             )
-            Core(ui, config, wpctrl, interval=float(args["--interval"]))
+            Core(config, wpctrl, interval=float(args["--interval"]))
     except (KeyboardInterrupt, SystemExit):
         pass
     except Exception as e:
@@ -105,8 +104,9 @@ def main():
             raise
     finally:
         log.debug("bye.")
+        logging_handler.auto_flush = True
         logging_handler.flush()
-    sys.exit(exitcode)
+        sys.exit(exitcode)
 
 
 if __name__ == "__main__":
