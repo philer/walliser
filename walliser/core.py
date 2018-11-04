@@ -18,14 +18,14 @@ class Core:
         self.config = config
         self.wallpaper_controller = wallpaper_controller
         self.screen_controller = ScreenController(wallpaper_controller)
-
+        self.screen_controller.display_wallpapers()
         self.ui = Ui(self.screen_controller, self.wallpaper_controller)
         self.ui.run_loop()
+        self.wallpaper_controller.save_updates()
 
         # signal.signal(signal.SIGINT, self.interrupt)
         # self.set_timeout(self.interval, self.update_wallpapers)
         # self.set_timeout(2, self.save_config)
-        # self.wallpaper_controller.save_updates()
 
     # Signal.INCREASE_DELAY.subscribe(self.increase_interval)
     # Signal.REDUCE_DELAY.subscribe(self.reduce_interval)

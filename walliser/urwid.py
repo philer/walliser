@@ -49,7 +49,8 @@ class PathWidget(Text):
 
 class ScreenWidget(WidgetWrap):
 
-    _info_template = "[ {rating} | {purity} ] {format} {width:d}×{height:d}"
+    _info_template = ("[ {rating} | {purity} ]"
+                      " {format} {width:d}×{height:d} {scale:.0%}")
 
     def __init__(self, screen):
         self._screen = screen
@@ -87,11 +88,12 @@ class ScreenWidget(WidgetWrap):
             format=wp.format,
             width=wp.width,
             height=wp.height,
+            scale=self._screen.wallpaper_scale,
         ))
-        if wp.x_offset or wp.y_offset or wp.scale != 1:
-            self._offsets.set_text(" ({:+},{:+},{:.0%})".format(
-                wp.x_offset, wp.y_offset, self._screen.wallpaper_scale
-            ))
+        if wp.x_offset or wp.y_offset or wp.zoom != 1:
+            self._offsets.set_text(" ({:+},{:+},{:.0%})".format(wp.x_offset,
+                                                                wp.y_offset,
+                                                                wp.zoom))
         else:
             self._offsets.set_text("")
         self._path.set_text(wp.path)
@@ -109,25 +111,25 @@ class ScreenWidget(WidgetWrap):
             self._screen.wallpaper.purity -= 1
         elif key == 'e':
             self._screen.wallpaper.purity += 1
-        elif key == 'k':
-            self._screen.wallpaper.y_offset += 10
-        elif key == 'j':
-            self._screen.wallpaper.y_offset -= 10
         elif key == 'h':
             self._screen.wallpaper.x_offset += 10
         elif key == 'l':
             self._screen.wallpaper.x_offset -= 10
+        elif key == 'k':
+            self._screen.wallpaper.y_offset += 10
+        elif key == 'j':
+            self._screen.wallpaper.y_offset -= 10
         elif key == 'z':
-            self._screen.wallpaper.scale += .05
+            self._screen.wallpaper.zoom += .05
         elif key == 'u':
-            self._screen.wallpaper.scale -= .05
+            self._screen.wallpaper.zoom -= .05
         elif key == '1':
             wp = self._screen.wallpaper
-            wp.scale = 1 / max(self._screen.width / wp.width,
-                               self._screen.height / wp.height)
+            wp.zoom = 1 / max(self._screen.width / wp.width,
+                              self._screen.height / wp.height)
         elif key == '0':
             wp = self._screen.wallpaper
-            wp.scale = 1
+            wp.zoom = 1
             wp.x_offset = 0
             wp.y_offset = 0
         else:

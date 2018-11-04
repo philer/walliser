@@ -6,7 +6,7 @@ import builtins
 import logging
 from operator import attrgetter
 from random import shuffle
-# from urllib.parse import quote as urlquote
+from collections import namedtuple
 from glob import iglob as glob
 import re
 from datetime import datetime
@@ -37,6 +37,10 @@ def images_in_dir(root_dir):
     for directory, _, files in os.walk(root_dir):
         for f in files:
             yield os.path.realpath(os.path.join(directory, f))
+
+
+Transform = namedtuple("Transform",
+    "flip_vertical flip_horizontal rotate x_offset y_offset scale")
 
 
 class Wallpaper(Observable):
@@ -93,23 +97,29 @@ class Wallpaper(Observable):
         self._y_offset = y_offset
 
     @property
-    def scale(self):
-        return self._scale
+    def zoom(self):
+        return self._zoom
 
-    @scale.setter
+    @zoom.setter
     @observed
-    def scale(self, scale):
-        self._scale = scale
-
+    def zoom(self, zoom):
+        self._zoom = zoom
 
     __slots__ = ('hash', 'int_hash', 'paths', 'invalid_paths',
                  'format', 'width', 'height',
                  'added', 'modified',
                  '_rating', '_purity', 'tags',
-                 '_x_offset', '_y_offset', '_scale'
+                 '_x_offset', '_y_offset', '_zoom'
                 )
+    _default_values = {
+        "rating": 0,
+        "purity": 0,
+        "x_offset": 0,
+        "y_offset": 0,
+        "zoom": 1,
+    }
     def __init__(self, hash, paths, format, width, height, added, modified,
-                 invalid_paths=None, rating=0, purity=0, tags=None):
+                 invalid_paths=None, tags=None, **props):
         super().__init__()
         self.hash = hash
         self.int_hash = builtins.hash(int(hash, 16)) # truncated int
@@ -119,12 +129,10 @@ class Wallpaper(Observable):
         self.height = height
         self.added = datetime.strptime(added, self.TIME_FORMAT)
         self.modified = datetime.strptime(modified, self.TIME_FORMAT)
-        self._rating = rating
-        self._purity = purity
         self.invalid_paths = invalid_paths or []
         self.tags = tags or []
-        self._x_offset = self._y_offset = 0
-        self._scale = 1
+        for attr, default in self._default_values.items():
+            setattr(self, "_" + attr, props.get(attr, default))
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + self.hash
@@ -148,9 +156,11 @@ class Wallpaper(Observable):
             'height': self.height,
             'added': self.added.strftime(self.TIME_FORMAT),
             'modified': self.modified.strftime(self.TIME_FORMAT),
-            'rating': self.rating,
-            'purity': self.purity,
         }
+        for attr, default in self._default_values.items():
+            value = getattr(self, "_" + attr)
+            if value != default:
+                data[attr] = value
         for attr in 'tags', 'invalid_paths':
             value = getattr(self, attr)
             if value:
@@ -184,17 +194,18 @@ class Wallpaper(Observable):
         self.paths.remove(path)
         if path not in self.invalid_paths:
             self.invalid_paths.append(path)
-        log.warning("Invalidated wallpaper path '%s' (%s remaining). Reason: %s",
+        log.warning("Invalidated wallpaper path '%s' (%s remaining)."
+                    "Reason: %s",
                     path, len(self.paths), reason)
 
     def transformed(self, screen_width=1920, screen_height=1080):
-        if self.x_offset or self.y_offset or self.scale != 1:
-            scale = self.scale * max(screen_width / self.width,
-                                     screen_height / self.height)
+        if self.x_offset or self.y_offset or self.zoom != 1:
             path = "/tmp/walliser_{:x}.jpg".format(hash(self)
                                       ^ hash(self.x_offset)
                                       ^ hash(self.y_offset)
-                                      ^ hash(self.scale))
+                                      ^ hash(self.zoom))
+            scale = self.zoom * max(screen_width / self.width,
+                                    screen_height / self.height)
             with Image.open(self.path) as img:
                 img = img.resize((int(self.width * scale),
                                   int(self.height * scale)))
@@ -213,7 +224,8 @@ def make_query(expression):
     interpreted as tags."""
     attributes = ("rating", "purity", "tags",
                   "width", "height", "format",
-                  "added", "modified")
+                  "added", "modified",
+                  "x_offset", "y_offset", "zoom")
     builtins = {"min": min, "max": max, "sum": sum, "map": map,
                 "int": int, "bool": bool, "str": str, "repr": repr,
                 "parse_relative_time": parse_relative_time}

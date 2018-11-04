@@ -50,6 +50,9 @@ class Collection:
         self._items = []
         self._position = -1
 
+    def __len__(self):
+        return len(self._items)
+
     def append(self, item):
         self._items.append(item)
         self._position = len(self._items) - 1
@@ -74,9 +77,9 @@ class Screen(Observable):
     @property
     def wallpaper_scale(self):
         wp = self.wallpaper
-        return wp.scale * max(self.width / wp.width, self.height / wp.height)
+        return wp.zoom * max(self.width / wp.width, self.height / wp.height)
 
-    def __init__(self, idx, wallpapers,  **props):
+    def __init__(self, idx, wallpapers, **props):
         super().__init__()
         self.idx = idx
         self.wallpapers = wallpapers
