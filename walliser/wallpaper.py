@@ -200,15 +200,19 @@ class Wallpaper(Observable):
 
     def transformed(self, screen_width=1920, screen_height=1080):
         if self.x_offset or self.y_offset or self.zoom != 1:
+            scale = self.zoom * max(screen_width / self.width,
+                                    screen_height / self.height)
             path = "/tmp/walliser_{:x}.jpg".format(hash(self)
                                       ^ hash(self.x_offset)
                                       ^ hash(self.y_offset)
-                                      ^ hash(self.zoom))
-            scale = self.zoom * max(screen_width / self.width,
-                                    screen_height / self.height)
+                                      ^ hash(scale))
+            if os.path.isfile(path):
+                return path
             with Image.open(self.path) as img:
-                img = img.resize((int(self.width * scale),
-                                  int(self.height * scale)))
+                if scale != 1:
+                    img = img.resize((int(self.width * scale),
+                                      int(self.height * scale)),
+                                     resample=Image.LANCZOS)
                 left = (img.width - screen_width) / 2 + self.x_offset
                 top = (img.height - screen_height) / 2 + self.y_offset
                 img = img.crop((left, top, left + screen_width,
