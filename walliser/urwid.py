@@ -99,30 +99,24 @@ class ScreenWidget(WidgetWrap):
         self._path.set_text(wp.path)
 
     def keypress(self, size, key):
-        if key == 'a':
-            self._screen.next_wallpaper()
-        elif key == 'q':
-            self._screen.prev_wallpaper()
-        elif key == 's':
-            self._screen.wallpaper.rating -= 1
-        elif key == 'w':
-            self._screen.wallpaper.rating += 1
-        elif key == 'd':
-            self._screen.wallpaper.purity -= 1
-        elif key == 'e':
-            self._screen.wallpaper.purity += 1
-        elif key == 'h':
-            self._screen.wallpaper.x_offset += 10
-        elif key == 'l':
-            self._screen.wallpaper.x_offset -= 10
-        elif key == 'k':
-            self._screen.wallpaper.y_offset += 10
-        elif key == 'j':
-            self._screen.wallpaper.y_offset -= 10
-        elif key == 'z':
-            self._screen.wallpaper.zoom += .05
-        elif key == 'u':
-            self._screen.wallpaper.zoom -= .05
+        if key == 'a': self._screen.next_wallpaper()
+        elif key == 'q': self._screen.prev_wallpaper()
+        elif key == 's': self._screen.wallpaper.rating -= 1
+        elif key == 'w': self._screen.wallpaper.rating += 1
+        elif key == 'd': self._screen.wallpaper.purity += 1
+        elif key == 'e': self._screen.wallpaper.purity -= 1
+        elif key == 'h': self._screen.wallpaper.x_offset += 10
+        elif key == 'H': self._screen.wallpaper.x_offset += 100
+        elif key == 'l': self._screen.wallpaper.x_offset -= 10
+        elif key == 'L': self._screen.wallpaper.x_offset -= 100
+        elif key == 'k': self._screen.wallpaper.y_offset += 10
+        elif key == 'K': self._screen.wallpaper.y_offset += 100
+        elif key == 'j': self._screen.wallpaper.y_offset -= 10
+        elif key == 'J': self._screen.wallpaper.y_offset -= 100
+        elif key == 'z': self._screen.wallpaper.zoom += .05
+        elif key == 'Z': self._screen.wallpaper.zoom += .2
+        elif key == 'u': self._screen.wallpaper.zoom -= .05
+        elif key == 'U': self._screen.wallpaper.zoom -= .2
         elif key == '1':
             wp = self._screen.wallpaper
             wp.zoom = 1 / max(self._screen.width / wp.width,
@@ -132,6 +126,8 @@ class ScreenWidget(WidgetWrap):
             wp.zoom = 1
             wp.x_offset = 0
             wp.y_offset = 0
+        elif key == 'o':
+            self._screen.wallpaper.open()
         else:
             return super().keypress(size, key)
 
