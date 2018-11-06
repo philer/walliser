@@ -6,14 +6,14 @@ import builtins
 import logging
 from operator import attrgetter
 from random import shuffle
-from collections import namedtuple
 from glob import iglob as glob
 import re
 from datetime import datetime
 
 from PIL import Image
 
-from .util import Observable, observed, get_file_hash, parse_relative_time
+from .util import (Observable, observed, observed_property,
+                   get_file_hash, parse_relative_time)
 from .progress import progress
 
 
@@ -39,9 +39,25 @@ def images_in_dir(root_dir):
             yield os.path.realpath(os.path.join(directory, f))
 
 
-Transform = namedtuple("Transform",
-    "flip_vertical flip_horizontal rotate x_offset y_offset scale")
-
+_simplified_transformations = {
+    # (flip_horizontal, flip_vertical, rotate)
+    (False, False, 0):   (False, False, 0),     # (),
+    (False, True, 0):    (False, True, 0),      # (Image.FLIP_TOP_BOTTOM,),
+    (True, False, 0):    (True, False, 0),      # (Image.FLIP_LEFT_RIGHT,),
+    (True, True, 0):     (False, False, 180),   # (Image.ROTATE_180),
+    (False, False, 90):  (False, False, 90),    # (Image.ROTATE_90,),
+    (False, True, 90):   (False, True, 90),     # (Image.TRANSPOSE),
+    (True, False, 90):   (True, False, 90),     # (Image.ROTATE_90, Image.FLIP_LEFT_RIGHT),
+    (True, True, 90):    (False, False, 270),   # (Image.ROTATE_270,),
+    (False, False, 180): (False, False, 180),   # (Image.ROTATE_180),
+    (False, True, 180):  (True, False, 0),      # (Image.FLIP_LEFT_RIGHT),
+    (True, False, 180):  (False, True, 0),      # (Image.FLIP_TOP_BOTTOM),
+    (True, True, 180):   (False, False, 0),     # (),
+    (False, False, 270): (False, False, 270),   # (Image.ROTATE_270,),
+    (False, True, 270):  (False, True, 270),    # (Image.ROTATE_270, Image.FLIP_TOP_BOTTOM),
+    (True, False, 270):  (True, False, 270),    # (Image.TRANSPOSE),
+    (True, True, 270):   (False, False, 90),    # (Image.ROTATE_90),
+}
 
 class Wallpaper(Observable):
     """Model representing one wallpaper"""
@@ -54,70 +70,49 @@ class Wallpaper(Observable):
             return self.paths[0]
         except IndexError:
             return None
-            # raise AttributeError("No valid path left for " + repr(self)) from None
-
-    # @property
-    # def url(self):
-    #     return "file://" + urlquote(self.path)
 
     @property
-    def rating(self):
-        return self._rating
-
-    @rating.setter
-    @observed
-    def rating(self, rating):
-        self._rating = rating
+    def width(self):
+        return self._height if self.transformations[2] % 180 else self._width
 
     @property
-    def purity(self):
-        return self._purity
-
-    @purity.setter
-    @observed
-    def purity(self, purity):
-        self._purity = purity
+    def height(self):
+        return self._width if self.transformations[2] % 180 else self._height
 
     @property
-    def x_offset(self):
-        return self._x_offset
-
-    @x_offset.setter
-    @observed
-    def x_offset(self, x_offset):
-        self._x_offset = x_offset
-
-    @property
-    def y_offset(self):
-        return self._y_offset
-
-    @y_offset.setter
-    @observed
-    def y_offset(self, y_offset):
-        self._y_offset = y_offset
-
-    @property
-    def zoom(self):
-        return self._zoom
-
-    @zoom.setter
-    @observed
-    def zoom(self, zoom):
-        self._zoom = zoom
+    def has_transformations(self):
+        return (self.x_offset or self.y_offset or self.zoom != 1 or
+                any(self.transformations))
 
     __slots__ = ('hash', 'int_hash', 'paths', 'invalid_paths',
-                 'format', 'width', 'height',
+                 'format', '_width', '_height',
                  'added', 'modified',
                  '_rating', '_purity', 'tags',
-                 '_x_offset', '_y_offset', '_zoom'
-                )
-    _default_values = {
-        "rating": 0,
-        "purity": 0,
-        "x_offset": 0,
-        "y_offset": 0,
-        "zoom": 1,
-    }
+                 '_x_offset', '_y_offset', '_zoom', '_transformations')
+
+    rating = observed_property("rating", 0)
+    purity = observed_property("purity", 0)
+    x_offset = observed_property("x_offset", 0)
+    y_offset = observed_property("y_offset", 0)
+    zoom = observed_property("zoom", 1)
+    transformations = observed_property("transformations", (False, False, 0))
+
+    def rotate(self, degree):
+        horizontal, vertical, rotate = self.transformations
+        self.transformations = _simplified_transformations[
+            (self.transformations[0], self.transformations[1],
+             (rotate + degree) % 360)]
+
+    def flip_vertical(self):
+        horizontal, vertical, rotate = self.transformations
+        self.transformations = _simplified_transformations[
+            (horizontal, not vertical, rotate)]
+
+    def flip_horizontal(self):
+        horizontal, vertical, rotate = self.transformations
+        self.transformations = _simplified_transformations[
+            (not horizontal, vertical, rotate)]
+
     def __init__(self, hash, paths, format, width, height, added, modified,
                  invalid_paths=None, tags=None, **props):
         super().__init__()
@@ -125,14 +120,14 @@ class Wallpaper(Observable):
         self.int_hash = builtins.hash(int(hash, 16)) # truncated int
         self.paths = paths
         self.format = format
-        self.width = width
-        self.height = height
+        self._width = width
+        self._height = height
         self.added = datetime.strptime(added, self.TIME_FORMAT)
         self.modified = datetime.strptime(modified, self.TIME_FORMAT)
         self.invalid_paths = invalid_paths or []
         self.tags = tags or []
-        for attr, default in self._default_values.items():
-            setattr(self, "_" + attr, props.get(attr, default))
+        for attr, value in props.items():
+            setattr(self, "_" + attr, value)
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + self.hash
@@ -149,18 +144,24 @@ class Wallpaper(Observable):
         """Dictionary representation of this object for storing.
         Excludes path so it can be used as key.
         """
+        # simple attributes, always present
         data = {
             'paths': self.paths,
             'format': self.format,
-            'width': self.width,
-            'height': self.height,
+            'width': self._width,
+            'height': self._height,
             'added': self.added.strftime(self.TIME_FORMAT),
             'modified': self.modified.strftime(self.TIME_FORMAT),
         }
-        for attr, default in self._default_values.items():
-            value = getattr(self, "_" + attr)
-            if value != default:
-                data[attr] = value
+        # attributes with common defaults may not need to be stored
+        for attr in ('rating', 'purity',
+                     'x_offset', 'y_offset', 'zoom',
+                     'rotate', 'flip_vertical', 'flip_horizontal'):
+            try:
+                data[attr] = getattr(self, "_" + attr)
+            except AttributeError:
+                pass
+        # attributes that are mutable iterables
         for attr in 'tags', 'invalid_paths':
             value = getattr(self, attr)
             if value:
@@ -198,31 +199,40 @@ class Wallpaper(Observable):
                     "Reason: %s",
                     path, len(self.paths), reason)
 
+    def _simplify_transformations(self):
+        (self.flip_horizontal, self.flip_vertical, self.rotate) = self._simplified_transformations[
+            (self.flip_horizontal, self.flip_vertical, self.rotate % 360)]
+
     def transformed(self, screen_width=1920, screen_height=1080):
-        if self.x_offset or self.y_offset or self.zoom != 1:
-            scale = self.zoom * max(screen_width / self.width,
-                                    screen_height / self.height)
-            path = "/tmp/walliser_{:x}.jpg".format(hash(self)
-                                      ^ hash(self.x_offset)
-                                      ^ hash(self.y_offset)
-                                      ^ hash(scale))
-            if os.path.isfile(path):
-                log.debug("Found cropped '%s'", path)
-                return path
-            with Image.open(self.path) as img:
-                log.debug("Creating cropped '%s'", path)
-                if scale != 1:
-                    img = img.resize((int(self.width * scale),
-                                      int(self.height * scale)),
-                                     resample=Image.LANCZOS)
-                left = (img.width - screen_width) / 2 + self.x_offset
-                top = (img.height - screen_height) / 2 + self.y_offset
-                img = img.crop((left, top, left + screen_width,
-                                           top + screen_height))
-                img.save(path)
+        if not self.has_transformations:
+            return self.path
+        unique_hash = hash((self, self.x_offset, self.y_offset, self.zoom,
+                            self.transformations))
+        path = "/tmp/walliser_{:x}.jpg".format(unique_hash)
+        if os.path.isfile(path):
+            log.debug("Found transformed '%s'", path)
             return path
-        log.debug("Using raw path '%s'", self.path)
-        return self.path
+        with Image.open(self.path) as img:
+            log.debug("Creating transformed '%s'", path)
+            horizontal, vertical, rotate = self.transformations
+            if horizontal:
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            if vertical:
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            if rotate:
+                img = img.rotate(rotate, expand=True)
+            scale = self.zoom * max(screen_width / img.width,
+                                    screen_height / img.height)
+            if scale != 1:
+                img = img.resize((int(img.width * scale),
+                                  int(img.height * scale)),
+                                 resample=Image.LANCZOS)
+            left = (img.width - screen_width) / 2 + self.x_offset
+            top = (img.height - screen_height) / 2 + self.y_offset
+            img = img.crop((left, top, left + screen_width,
+                                       top + screen_height))
+            img.save(path)
+        return path
 
 
 def make_query(expression):

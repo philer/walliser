@@ -147,6 +147,25 @@ def observed(method):
         self._notify_observers(method.__name__, *args, **kwargs)
     return wrapper
 
+def observed_property(property_name, default):
+    """Default must be immutable."""
+    hidden_property_name = "_" + property_name
+    def getter(self):
+        try:
+            return getattr(self, hidden_property_name)
+        except AttributeError:
+            return default
+    def deleter(self):
+        delattr(self, hidden_property_name)
+    def setter(self, value):
+        if value == default:
+            try:
+                delattr(self, hidden_property_name)
+            except AttributeError:
+                pass
+        else:
+            setattr(self, hidden_property_name, value)
+    return property(getter, observed(setter), deleter)
 
 
 def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):

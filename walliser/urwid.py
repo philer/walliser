@@ -63,12 +63,12 @@ class ScreenWidget(WidgetWrap):
         self._left_border = Text(" ")
         # self._playpause = Text("⏸")
         self._info = Text(self._info_template)
-        self._offsets = Text("")
+        self._transformations = Text("")
         info = Columns([
             (1, self._left_border),
             # (2, self._playpause),
             ('pack', self._info),
-            ('pack', self._offsets),
+            ('pack', self._transformations),
         ])
         self._path = PathWidget()
         self._root = AttrMap(Pile([
@@ -98,45 +98,58 @@ class ScreenWidget(WidgetWrap):
             height=wp.height,
             scale=self._screen.wallpaper_scale,
         ))
-        if wp.x_offset or wp.y_offset or wp.zoom != 1:
-            self._offsets.set_text(" ({:+},{:+},{:.0%})".format(wp.x_offset,
-                                                                wp.y_offset,
-                                                                wp.zoom))
+        parts = []
+        if wp.x_offset or wp.y_offset:
+            parts.append("{:+},{:+}".format(wp.x_offset, wp.y_offset))
+        if wp.zoom != 1:
+            parts.append("{:.0%}".format(wp.zoom))
+        if wp.transformations[2]:
+            parts.append(str(wp.transformations[2]) + "°")
+        if wp.transformations[0]:
+            parts.append("↔")
+        if wp.transformations[1]:
+            parts.append("↕")
+        if parts:
+            self._transformations.set_text(" (" + ",".join(parts) + ")")
         else:
-            self._offsets.set_text("")
+            self._transformations.set_text("")
         self._path.set_text(wp.path)
 
     def keypress(self, size, key):
+        wp = self._screen.wallpaper
         if key == 'delete': self._screen.remove_current_wallpaper()
-        elif key == 'o': self._screen.wallpaper.open()
+        elif key == 'o': wp.open()
         elif key == 'a': self._screen.next_wallpaper()
         elif key == 'q': self._screen.prev_wallpaper()
-        elif key == 's': self._screen.wallpaper.rating -= 1
-        elif key == 'w': self._screen.wallpaper.rating += 1
-        elif key == 'd': self._screen.wallpaper.purity += 1
-        elif key == 'e': self._screen.wallpaper.purity -= 1
-        elif key == 'z': self._screen.wallpaper.zoom += .05
-        elif key == 'Z': self._screen.wallpaper.zoom += .2
-        elif key == 'u': self._screen.wallpaper.zoom -= .05
-        elif key == 'U': self._screen.wallpaper.zoom -= .2
+        elif key == 's': wp.rating -= 1
+        elif key == 'w': wp.rating += 1
+        elif key == 'd': wp.purity += 1
+        elif key == 'e': wp.purity -= 1
+        elif key == 'z': wp.zoom += .05
+        elif key == 'Z': wp.zoom += .2
+        elif key == 'u': wp.zoom -= .05
+        elif key == 'U': wp.zoom -= .2
+        elif key == 'r': wp.rotate(+90)
+        elif key == 'R': wp.rotate(-90)
+        elif key == 'f': wp.flip_vertical()
+        elif key == 'F': wp.flip_horizontal()
         elif key == 'h' or key == 'left':
-            self._screen.wallpaper.x_offset += 10
+            wp.x_offset += 10
         elif key == 'H' or key == 'shift left':
-            self._screen.wallpaper.x_offset += 100
+            wp.x_offset += 100
         elif key == 'l' or key == 'right':
-            self._screen.wallpaper.x_offset -= 10
+            wp.x_offset -= 10
         elif key == 'L' or key == 'shift right':
-            self._screen.wallpaper.x_offset -= 100
+            wp.x_offset -= 100
         elif key == 'k' or key == 'up':
-            self._screen.wallpaper.y_offset += 10
+            wp.y_offset += 10
         elif key == 'K' or key == 'shift up':
-            self._screen.wallpaper.y_offset += 100
+            wp.y_offset += 100
         elif key == 'j' or key == 'down':
-            self._screen.wallpaper.y_offset -= 10
+            wp.y_offset -= 10
         elif key == 'J' or key == 'shift down':
-            self._screen.wallpaper.y_offset -= 100
+            wp.y_offset -= 100
         elif key == '1':
-            wp = self._screen.wallpaper
             wp.zoom = 1 / max(self._screen.width / wp.width,
                               self._screen.height / wp.height)
         elif key == '0':
