@@ -221,6 +221,7 @@ class Wallpaper(Observable):
                                            top + screen_height))
                 img.save(path)
             return path
+        log.debug("Using raw path '%s'", self.path)
         return self.path
 
 
