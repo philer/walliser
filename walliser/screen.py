@@ -59,6 +59,7 @@ class Collection:
 
     def remove_current(self):
         self._items.pop(self._position)
+        self._position -= 1
 
     def next(self):
         self._position += 1
@@ -102,22 +103,33 @@ class Screen(Observable):
 
     @observed
     def next_wallpaper(self):
-        self.wallpaper.unsubscribe(self)
+        self.wallpapers.current.unsubscribe(self)
         self.wallpapers.next()
-        self.wallpaper.subscribe(self)
+        self.wallpapers.current.subscribe(self)
 
     @observed
     def prev_wallpaper(self):
-        self.wallpaper.unsubscribe(self)
+        self.wallpapers.current.unsubscribe(self)
         self.wallpapers.prev()
-        self.wallpaper.subscribe(self)
+        self.wallpapers.current.subscribe(self)
 
     @observed
-    def set_wallpapers(self, wallpapers):
-        self.wallpaper.unsubscribe(self)
+    def set_wallpapers_collection(self, wallpapers):
+        self.wallpapers.current.unsubscribe(self)
         self.wallpapers = wallpapers
-        self.wallpaper.subscribe(self)
+        self.wallpapers.current.subscribe(self)
 
+    @observed
+    def append_wallpaper(self, wallpaper):
+        self.wallpapers.current.unsubscribe(self)
+        self.wallpapers.append(wallpaper)
+        self.wallpapers.current.subscribe(self)
+
+    @observed
+    def remove_current_wallpaper(self):
+        self.wallpapers.current.unsubscribe(self)
+        self.wallpapers.remove_current()
+        self.wallpapers.current.subscribe(self)
 
 class ScreenController:
     """Manage available screens, cycling through them, pausing etc."""
@@ -148,5 +160,15 @@ class ScreenController:
     def cycle_collections(self):
         first = self.screens[0].wallpapers
         for s1, s2 in zip(self.screens, self.screens[1:]):
-            s1.set_wallpapers(s2.wallpapers)
-        self.screens[-1].set_wallpapers(first)
+            s1.set_wallpapers_collection(s2.wallpapers)
+        self.screens[-1].set_wallpapers_collection(first)
+
+    def move_wallpaper(self, from_idx, to_idx):
+        try:
+            to_screen = self.screens[to_idx]
+        except IndexError:
+            log.info("Screen %g doesn't exist.", to_idx)
+        else:
+            from_screen = self.screens[from_idx]
+            to_screen.append_wallpaper(from_screen.wallpaper)
+            from_screen.remove_current_wallpaper()

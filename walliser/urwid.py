@@ -7,8 +7,9 @@ from urwid import *   # TODO
 
 from .util import CallbackLogHandler
 
-log = logging.getLogger(__name__)
+__all__ = ('Ui')
 
+log = logging.getLogger(__name__)
 
 palette = [
     ('divider', '', '', '', '#666', ''),
@@ -17,6 +18,9 @@ palette = [
     ('focused path', 'underline,bold,yellow', '')
 ]
 
+# this is dumb: 'shift 1', 'shift 2', ...
+_shift_number_keys = dict((key, number) for number, key
+                          in enumerate('!"§$%&/()='))
 
 class ListBoxWithTabSupport(ListBox):
     """urwid *still* doesn't support tab key for cycling focus"""
@@ -75,6 +79,8 @@ class ScreenWidget(WidgetWrap):
         self.notify()
 
     def render(self, size, focus=False):
+        # maybe this is better:
+        # https://groups.google.com/a/excess.org/forum/#!topic/urwid/3Si0ZRKkFaw
         self._left_border.set_text("│" if focus else " ")
         return self._root.render(size, focus)
 
@@ -152,7 +158,7 @@ class Ui:
         self._scrctrl = screen_controller
         self._wpctrl = wallpaper_controller
         self._layout()
-        self._loop = urwid.MainLoop(self._root,
+        self._loop = urwid.MainLoop(widget=self._root,
                                     palette=palette,
                                     unhandled_input=self._handle_global_input)
         self._loop.screen.set_terminal_properties(
@@ -193,5 +199,9 @@ class Ui:
             self._wpctrl.save_updates()
         elif key == 'x':
             self._scrctrl.cycle_collections()
+        elif key in _shift_number_keys:
+            current_screen_idx = self._root.focus.focus._screen.idx
+            key_number = _shift_number_keys[key]
+            self._scrctrl.move_wallpaper(current_screen_idx, key_number)
         else:
             log.info("unhandled key: '%s'", key)
