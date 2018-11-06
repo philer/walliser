@@ -207,8 +207,10 @@ class Wallpaper(Observable):
                                       ^ hash(self.y_offset)
                                       ^ hash(scale))
             if os.path.isfile(path):
+                log.debug("Found cropped '%s'", path)
                 return path
             with Image.open(self.path) as img:
+                log.debug("Creating cropped '%s'", path)
                 if scale != 1:
                     img = img.resize((int(self.width * scale),
                                       int(self.height * scale)),
@@ -324,12 +326,12 @@ class WallpaperController:
                                            # for non-images.
                     hash = get_file_hash(path)
                     if hash in config_data:
-                        log.debug("Adding path of know wallpaper file://%s", urlquote(path))
+                        log.debug("Adding path of know wallpaper '%s'", path)
                         data = config_data[hash].copy()
                         data["paths"].append(path)
                         data["paths"].sort()
                     else:  # new file
-                        log.debug("Added new wallpaper file://%s", urlquote(path))
+                        log.debug("Added new wallpaper '%s'", path)
                         data = {
                             "paths": [path],
                             "format": img.format,
@@ -339,7 +341,7 @@ class WallpaperController:
                             "modified": now,
                         }
                 except IOError:
-                    log.warning("Can't open 'file://%s'", urlquote(path))
+                    log.warning("Can't open '%s'", path)
                     continue
             wp = Wallpaper(hash=hash, **data)
             if updated:

@@ -49,19 +49,20 @@ class PathWidget(Text):
 
 class ScreenWidget(WidgetWrap):
 
-    _info_template = ("[ {rating} | {purity} ]"
+    _info_template = ("{collection_size:>4g}"
+                      " [ {rating} | {purity} ]"
                       " {format} {width:d}×{height:d} {scale:.0%}")
 
     def __init__(self, screen):
         self._screen = screen
         screen.subscribe(self)
         self._left_border = Text(" ")
-        self._playpause = Text("⏸")
+        # self._playpause = Text("⏸")
         self._info = Text(self._info_template)
         self._offsets = Text("")
         info = Columns([
             (1, self._left_border),
-            (2, self._playpause),
+            # (2, self._playpause),
             ('pack', self._info),
             ('pack', self._offsets),
         ])
@@ -83,6 +84,7 @@ class ScreenWidget(WidgetWrap):
     def notify(self, *_):
         wp = self._screen.wallpaper
         self._info.set_text(self._info_template.format(
+            collection_size=len(self._screen.wallpapers),
             rating=("☆" if wp.rating == 0 else "★·" + str(wp.rating)),
             purity=("♡" if wp.purity == 0 else "♥·" + str(wp.purity)),
             format=wp.format,
@@ -155,7 +157,7 @@ class Ui:
 
     def _layout(self):
         self._wallpaper_count = Text(str(len(self._wpctrl.wallpapers)))
-        self._info = Text("")
+        self._info = Text("", wrap='clip')
         header = Pile([Columns([('pack', self._wallpaper_count),
                                 ('pack', Text(" Wallpapers ⋮ ")),
                                 self._info]),
