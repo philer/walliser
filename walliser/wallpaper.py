@@ -17,6 +17,10 @@ from .util import (Observable, observed, observed_property,
 from .progress import progress
 
 
+import warnings
+warnings.simplefilter('error', Image.DecompressionBombWarning)
+Image.MAX_IMAGE_PIXELS = 16000**2
+
 log = logging.getLogger(__name__)
 
 
