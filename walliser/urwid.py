@@ -3,7 +3,8 @@
 import logging
 
 import urwid
-from urwid import *   # TODO
+from urwid import (MainLoop, ExitMainLoop, WidgetWrap,
+                   Frame, Pile, Columns, ListBox, Text, Divider, AttrMap)
 
 from .util import CallbackLogHandler
 
@@ -57,9 +58,9 @@ class ScreenWidget(WidgetWrap):
                       " [ {rating} | {purity} ]"
                       " {format} {width:d}×{height:d} {scale:.0%}")
 
-    def __init__(self, screen):
+    def __init__(self, screen, screen_controller):
         self._screen = screen
-        screen.subscribe(self)
+        self._scrctrl = screen_controller
         self._left_border = Text(" ")
         # self._playpause = Text("⏸")
         self._info = Text(self._info_template)
@@ -76,7 +77,10 @@ class ScreenWidget(WidgetWrap):
             Columns([(1, self._left_border), self._path]),
         ]), None, 'focused screen')
         super().__init__(self._root)
-        self.notify()
+        self.update()
+
+    def selectable(self):
+        return True
 
     def render(self, size, focus=False):
         # maybe this is better:
@@ -84,10 +88,7 @@ class ScreenWidget(WidgetWrap):
         self._left_border.set_text("│" if focus else " ")
         return self._root.render(size, focus)
 
-    def selectable(self):
-        return True
-
-    def notify(self, *_):
+    def update(self, *_):
         wp = self._screen.wallpaper
         self._info.set_text(self._info_template.format(
             collection_size=len(self._screen.wallpapers),
@@ -117,10 +118,10 @@ class ScreenWidget(WidgetWrap):
 
     def keypress(self, size, key):
         wp = self._screen.wallpaper
-        if key == 'delete': self._screen.remove_current_wallpaper()
+        if key == 'delete': self._screen.wallpapers.remove_current()
         elif key == 'o': wp.open()
-        elif key == 'a': self._screen.next_wallpaper()
-        elif key == 'q': self._screen.prev_wallpaper()
+        elif key == 'a': self._screen.wallpapers.next()
+        elif key == 'q': self._screen.wallpapers.prev()
         elif key == 's': wp.rating -= 1
         elif key == 'w': wp.rating += 1
         elif key == 'd': wp.purity += 1
@@ -153,13 +154,14 @@ class ScreenWidget(WidgetWrap):
             wp.zoom = 1 / max(self._screen.width / wp.width,
                               self._screen.height / wp.height)
         elif key == '0':
-            wp = self._screen.wallpaper
             del wp.zoom
             del wp.x_offset
             del wp.y_offset
             del wp.transformations
         else:
             return super().keypress(size, key)
+        self.update()
+        self._scrctrl.display_wallpapers()
 
     def mouse_event(self, size, event, *_):
         if event == 'mouse release':
@@ -172,9 +174,9 @@ class Ui:
         self._scrctrl = screen_controller
         self._wpctrl = wallpaper_controller
         self._layout()
-        self._loop = urwid.MainLoop(widget=self._root,
-                                    palette=palette,
-                                    unhandled_input=self._handle_global_input)
+        self._loop = MainLoop(widget=self._root,
+                              palette=palette,
+                              unhandled_input=self._handle_global_input)
         self._loop.screen.set_terminal_properties(
             colors=256, bright_is_bold=False, has_underline=True)
 
@@ -186,20 +188,21 @@ class Ui:
     def _layout(self):
         self._wallpaper_count = Text(str(len(self._wpctrl.wallpapers)))
         self._info = Text("", wrap='clip')
+        self._screens = [ScreenWidget(screen, self._scrctrl)
+                         for screen in self._scrctrl.screens]
         header = Pile([Columns([('pack', self._wallpaper_count),
                                 ('pack', Text(" Wallpapers ⋮ ")),
                                 self._info]),
                        AttrMap(Divider("─"), 'divider')])
-        body = ListBoxWithTabSupport([ScreenWidget(screen)
-                                      for screen in self._scrctrl.screens])
-        self._root = Frame(header=header, body=body)
+        self._root = Frame(header=header,
+                           body=ListBoxWithTabSupport(self._screens))
 
 
     def run_loop(self):
-        self.log_handler = CallbackLogHandler(self.info)
-        logging.getLogger(__package__).addHandler(self.log_handler)
+        self._log_handler = CallbackLogHandler(self.info)
+        logging.getLogger(__package__).addHandler(self._log_handler)
         self._loop.run()
-        logging.getLogger(__package__).removeHandler(self.log_handler)
+        logging.getLogger(__package__).removeHandler(self._log_handler)
 
 
     def info(self, message):
@@ -208,7 +211,7 @@ class Ui:
 
     def _handle_global_input(self, key):
         if key == 'esc':
-            raise urwid.ExitMainLoop()
+            raise ExitMainLoop()
         elif key == 'ctrl s':
             self._wpctrl.save_updates()
         elif key == 'x':
@@ -219,3 +222,6 @@ class Ui:
             self._scrctrl.move_wallpaper(current_screen_idx, key_number)
         else:
             log.info("unhandled key: '%s'", key)
+            return
+        for screen_widget in self._screens:
+            screen_widget.update()

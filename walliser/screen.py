@@ -4,8 +4,6 @@ import subprocess
 import logging
 import re
 
-from .util import Observable, observed, steplist, modlist, each
-
 log = logging.getLogger(__name__)
 
 def get_screens_data():
@@ -34,6 +32,12 @@ def _display_wallpapers(paths):
 
 
 class Collection:
+    """
+    Collection of Wallpapers on a Screen.
+    Maintains a current position in the collection and takes new items
+    from a given source if required and possible. Otherwise cycles
+    through previous entries.
+    """
     @property
     def current(self):
         try:
@@ -68,7 +72,7 @@ class Collection:
         self._position = (self._position - 1) % len(self._items)
 
 
-class Screen(Observable):
+class Screen:
     """Model representing one (usually physical) monitor"""
 
     @property
@@ -86,7 +90,6 @@ class Screen(Observable):
         self.wallpapers = wallpapers
         for attr, value in props.items():
             setattr(self, attr, value)
-        self.wallpaper.subscribe(self)
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + str(self.idx)
@@ -97,39 +100,6 @@ class Screen(Observable):
     def __index__(self):
         return self.idx
 
-    @observed
-    def notify(self, *_):
-        pass
-
-    @observed
-    def next_wallpaper(self):
-        self.wallpapers.current.unsubscribe(self)
-        self.wallpapers.next()
-        self.wallpapers.current.subscribe(self)
-
-    @observed
-    def prev_wallpaper(self):
-        self.wallpapers.current.unsubscribe(self)
-        self.wallpapers.prev()
-        self.wallpapers.current.subscribe(self)
-
-    @observed
-    def set_wallpapers_collection(self, wallpapers):
-        self.wallpapers.current.unsubscribe(self)
-        self.wallpapers = wallpapers
-        self.wallpapers.current.subscribe(self)
-
-    @observed
-    def append_wallpaper(self, wallpaper):
-        self.wallpapers.current.unsubscribe(self)
-        self.wallpapers.append(wallpaper)
-        self.wallpapers.current.subscribe(self)
-
-    @observed
-    def remove_current_wallpaper(self):
-        self.wallpapers.current.unsubscribe(self)
-        self.wallpapers.remove_current()
-        self.wallpapers.current.subscribe(self)
 
 class ScreenController:
     """Manage available screens, cycling through them, pausing etc."""
@@ -139,15 +109,11 @@ class ScreenController:
                                 if wp.check_paths())
         self.screens = tuple(Screen(idx, Collection(wallpaper_source), **data)
                              for idx, data in enumerate(get_screens_data()))
-        if not self.screens:
+        if self.screens:
+            log.debug("Found %d screens.", len(self.screens))
+        else:
             raise Exception("No screens found.")
-        log.debug("Found %d screens.", len(self.screens))
-        for screen in self.screens:
-            screen.subscribe(self)
         self._live_wallpaper_paths = None
-
-    def notify(self, *_):
-        self.display_wallpapers()
 
     def display_wallpapers(self):
         """Put currently selected wallpapers live on screens."""
@@ -160,15 +126,17 @@ class ScreenController:
     def cycle_collections(self):
         first = self.screens[0].wallpapers
         for s1, s2 in zip(self.screens, self.screens[1:]):
-            s1.set_wallpapers_collection(s2.wallpapers)
-        self.screens[-1].set_wallpapers_collection(first)
+            s1.wallpapers = s2.wallpapers
+        self.screens[-1].wallpapers = first
+        self.display_wallpapers()
 
     def move_wallpaper(self, from_idx, to_idx):
         try:
-            to_screen = self.screens[to_idx]
+            to_collection = self.screens[to_idx].wallpapers
         except IndexError:
             log.info("Screen %g doesn't exist.", to_idx)
         else:
-            from_screen = self.screens[from_idx]
-            to_screen.append_wallpaper(from_screen.wallpaper)
-            from_screen.remove_current_wallpaper()
+            from_collection = self.screens[from_idx].wallpapers
+            to_collection.append(from_collection.current)
+            from_collection.remove_current()
+            self.display_wallpapers()

@@ -192,10 +192,6 @@ class Wallpaper(Observable):
                     "Reason: %s",
                     path, len(self.paths), reason)
 
-    def _simplify_transformations(self):
-        (self.flip_horizontal, self.flip_vertical, self.rotate) = self._simplified_transformations[
-            (self.flip_horizontal, self.flip_vertical, self.rotate % 360)]
-
     def transformed(self, screen_width=1920, screen_height=1080):
         if not self.has_transformations:
             return self.path

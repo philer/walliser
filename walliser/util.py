@@ -11,106 +11,9 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
 
-def exhaust(iterator):
-    """Do nothing with every element of an iterator."""
-    for _ in iterator:
-        pass
-# exhaust = deque(maxlen=0).extend
-
-def each(function, *iterators):
-    """Like map() but runs immediately and returns nothing."""
-    exhaust(map(function, *iterators))
-
 def clamp(min, max, val):
     """Combination of min and max."""
     return min if val < min else max if val > max else val
-
-def crop(lines, columns, string, ellipsis="…"):
-    """Shortens string to given maximum length and adds ellipsis if it does."""
-    return "\n".join(line[ 0 : columns - len(ellipsis) ] + ellipsis
-                     if len(line) > columns else line
-                     for line in string.split("\n")[0:lines])
-
-
-# Relies on undocumented implementation details in stdlib (works in 3.5, 3.6)
-class _IdentityEnumDict(enum._EnumDict):
-    """dict subclass that dynamically maps keys to themselves."""
-    def __getitem__(self, key):
-        try:
-            return super().__getitem__(key)
-        except KeyError:
-            if key[0] == '_' == key[-1]: # overly strict _[sd]under_ check
-                raise
-            self[key] = key
-        return key
-
-# Relies on undocumented implementation details in stdlib (works in 3.5, 3.6)
-class AutoStrEnumMeta(enum.EnumMeta):
-    """Enum type that automatically assigns members their name as their value"""
-    @classmethod
-    def __prepare__(metacls, cls, bases):
-        return _IdentityEnumDict()
-
-
-class modlist:
-    """Store a current position and allow cycling."""
-
-    @property
-    def current(self):
-        return self[self.position]
-
-    def __init__(self, items, position=0):
-        self.items = items
-        self.position = position
-
-    def index(self, key):
-        try:
-            return key % len(self.items)
-        except ZeroDivisionError:
-            raise IndexError("modlist is empty") from None
-
-    def __getitem__(self, key):
-        return self.items[self.index(key)]
-
-    def __setitem__(self, key, value):
-        self.items[self.index(key)] = value
-
-    def __bool__(self):
-        return bool(self.items)
-
-    def cycle(self, by):
-        self.position = self.position + by
-        return self.current
-
-    def prev(self):
-        return self.cycle(1)
-
-    def next(self):
-        return self.cycle(-1)
-
-
-class steplist:
-    """Like a list but keys cycle indefinitely over a sublist."""
-
-    def __init__(self, items, step=1, offset=0):
-        self.items = items
-        self.step = step
-        self.offset = offset % step
-
-    def index(self, key):
-        return key * self.step + self.offset
-
-    def __getitem__(self, key):
-        return self.items[self.index(key)]
-
-    def __setitem__(self, key, value):
-        self.items[self.index(key)] = value
-
-    def __len__(self):
-        return ceil((len(self.items) - self.offset) / self.step)
-
-    def __bool__(self):
-        return bool(self.items)
 
 
 class Observable:
@@ -121,10 +24,6 @@ class Observable:
     __slots__ = ('_observers',)
     def __init__(self):
         self._observers = set()
-
-    # def transfer_observers(self, other):
-    #     other._observers.update(self._observers)
-    #     self._observers = set()
 
     def subscribe(self, subscriber):
         """Add a subscriber to this object's observer list"""
@@ -179,7 +78,23 @@ def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):
             hasher.update(buffer)
             buffer = f.read(blocksize)
     return hasher.hexdigest()
-    # return base64.b64encode(hasher.digest()).decode("utf-8")
+
+
+_time_units = {
+    "s": "seconds", "M": "minutes", "H": "hours",
+    "d": "days", "w": "weeks", "m": "months", "y": "years",
+}
+
+def parse_relative_time(string):
+    parts = {}
+    number = 0
+    for match in re.findall(r"[a-zA-Z]+|[0-9]+", string):
+        try:
+            number = int(match)
+        except ValueError:
+            parts[_time_units[match]] = number
+    return datetime.now() - relativedelta(**parts)
+
 
 
 ### CLI helpers ###
@@ -250,18 +165,3 @@ class FancyLogFormatter(logging.Formatter):
             pass
         return message + ANSI_ERASE_TO_EOL
 
-
-_time_units = {
-    "s": "seconds", "M": "minutes", "H": "hours",
-    "d": "days", "w": "weeks", "m": "months", "y": "years",
-}
-
-def parse_relative_time(string):
-    parts = {}
-    number = 0
-    for match in re.findall(r"[a-zA-Z]+|[0-9]+", string):
-        try:
-            number = int(match)
-        except ValueError:
-            parts[_time_units[match]] = number
-    return datetime.now() - relativedelta(**parts)
