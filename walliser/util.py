@@ -156,7 +156,10 @@ def observed_property(property_name, default):
         except AttributeError:
             return default
     def deleter(self):
-        delattr(self, hidden_property_name)
+        try:
+            delattr(self, hidden_property_name)
+        except AttributeError:
+            pass
     def setter(self, value):
         if value == default:
             try:
@@ -165,7 +168,7 @@ def observed_property(property_name, default):
                 pass
         else:
             setattr(self, hidden_property_name, value)
-    return property(getter, observed(setter), deleter)
+    return property(getter, observed(setter), observed(deleter))
 
 
 def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):

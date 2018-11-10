@@ -154,9 +154,10 @@ class ScreenWidget(WidgetWrap):
                               self._screen.height / wp.height)
         elif key == '0':
             wp = self._screen.wallpaper
-            wp.zoom = 1
-            wp.x_offset = 0
-            wp.y_offset = 0
+            del wp.zoom
+            del wp.x_offset
+            del wp.y_offset
+            del wp.transformations
         else:
             return super().keypress(size, key)
 

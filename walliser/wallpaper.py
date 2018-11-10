@@ -16,7 +16,6 @@ from .util import (Observable, observed, observed_property,
                    get_file_hash, parse_relative_time)
 from .progress import progress
 
-
 import warnings
 warnings.simplefilter('error', Image.DecompressionBombWarning)
 Image.MAX_IMAGE_PIXELS = 16000**2
@@ -43,24 +42,15 @@ def images_in_dir(root_dir):
             yield os.path.realpath(os.path.join(directory, f))
 
 
-_simplified_transformations = {
+# Some combinations of transformations can be simplified
+_simple_trans = {
     # (flip_horizontal, flip_vertical, rotate)
-    (False, False, 0):   (False, False, 0),     # (),
-    (False, True, 0):    (False, True, 0),      # (Image.FLIP_TOP_BOTTOM,),
-    (True, False, 0):    (True, False, 0),      # (Image.FLIP_LEFT_RIGHT,),
-    (True, True, 0):     (False, False, 180),   # (Image.ROTATE_180),
-    (False, False, 90):  (False, False, 90),    # (Image.ROTATE_90,),
-    (False, True, 90):   (False, True, 90),     # (Image.TRANSPOSE),
-    (True, False, 90):   (True, False, 90),     # (Image.ROTATE_90, Image.FLIP_LEFT_RIGHT),
-    (True, True, 90):    (False, False, 270),   # (Image.ROTATE_270,),
-    (False, False, 180): (False, False, 180),   # (Image.ROTATE_180),
-    (False, True, 180):  (True, False, 0),      # (Image.FLIP_LEFT_RIGHT),
-    (True, False, 180):  (False, True, 0),      # (Image.FLIP_TOP_BOTTOM),
-    (True, True, 180):   (False, False, 0),     # (),
-    (False, False, 270): (False, False, 270),   # (Image.ROTATE_270,),
-    (False, True, 270):  (False, True, 270),    # (Image.ROTATE_270, Image.FLIP_TOP_BOTTOM),
-    (True, False, 270):  (True, False, 270),    # (Image.TRANSPOSE),
-    (True, True, 270):   (False, False, 90),    # (Image.ROTATE_90),
+    (True, True, 0):     (False, False, 180),
+    (True, True, 90):    (False, False, 270),
+    (False, True, 180):  (True, False, 0),
+    (True, False, 180):  (False, True, 0),
+    (True, True, 180):   (False, False, 0),
+    (True, True, 270):   (False, False, 90),
 }
 
 class Wallpaper(Observable):
@@ -102,20 +92,19 @@ class Wallpaper(Observable):
     transformations = observed_property("transformations", (False, False, 0))
 
     def rotate(self, degree):
-        horizontal, vertical, rotate = self.transformations
-        self.transformations = _simplified_transformations[
-            (self.transformations[0], self.transformations[1],
-             (rotate + degree) % 360)]
+        hori, vert, rot = self.transformations
+        new_trafos = hori, vert, (rot + degree) % 360
+        self.transformations = _simple_trans.get(new_trafos, new_trafos)
 
     def flip_vertical(self):
-        horizontal, vertical, rotate = self.transformations
-        self.transformations = _simplified_transformations[
-            (horizontal, not vertical, rotate)]
+        hori, vert, rot = self.transformations
+        new_trafos = hori, not vert, rot
+        self.transformations = _simple_trans.get(new_trafos, new_trafos)
 
     def flip_horizontal(self):
-        horizontal, vertical, rotate = self.transformations
-        self.transformations = _simplified_transformations[
-            (not horizontal, vertical, rotate)]
+        hori, vert, rot = self.transformations
+        new_trafos = not hori, vert, rot
+        self.transformations = _simple_trans.get(new_trafos, new_trafos)
 
     def __init__(self, hash, paths, format, width, height, added, modified,
                  invalid_paths=None, tags=None, **props):
