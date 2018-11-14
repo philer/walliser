@@ -56,8 +56,6 @@ _simple_trans = {
 class Wallpaper(Observable):
     """Model representing one wallpaper"""
 
-    TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
-
     @property
     def path(self):
         try:
@@ -115,12 +113,16 @@ class Wallpaper(Observable):
         self.format = format
         self._width = width
         self._height = height
-        self.added = datetime.strptime(added, self.TIME_FORMAT)
-        self.modified = datetime.strptime(modified, self.TIME_FORMAT)
+        self.added = added
+        self.modified = modified
         self.invalid_paths = invalid_paths or []
         self.tags = tags or []
         for attr, value in props.items():
             setattr(self, "_" + attr, value)
+        self.subscribe(self)
+
+    def notify(self, *_):
+        self.modified = datetime.now()
 
     def __repr__(self):
         return self.__class__.__name__ + ":" + self.hash
@@ -143,8 +145,8 @@ class Wallpaper(Observable):
             'format': self.format,
             'width': self._width,
             'height': self._height,
-            'added': self.added.strftime(self.TIME_FORMAT),
-            'modified': self.modified.strftime(self.TIME_FORMAT),
+            'added': self.added,
+            'modified': self.modified,
         }
         # attributes with common defaults may not need to be stored
         for attr in ('rating', 'purity',
@@ -265,11 +267,11 @@ class WallpaperController:
     config related IO (TODO: isolate the IO)."""
 
     def __init__(self, config, sources=None, query="True", sort=False):
-        self.config = config
-        self.stats = {"saved_updates": 0}
+        self._config = config
+        self._updated_wallpapers = set()
+        self._updates_saved = 0
 
         self.wallpapers = []
-        self.updated_wallpapers = set()
 
         try:
             config_data = config["wallpapers"]
@@ -291,8 +293,8 @@ class WallpaperController:
             wp.subscribe(self)
             self.wallpapers.append(wp)
 
-        if self.updated_wallpapers:
-            log.info("Found %d new wallpapers.", len(self.updated_wallpapers))
+        if self._updated_wallpapers:
+            log.info("Found %d new wallpapers.", len(self._updated_wallpapers))
 
         if not self.wallpapers:
             raise Exception('No matching wallpapers found. Query: "' + query_expression + '"')
@@ -308,7 +310,7 @@ class WallpaperController:
         """Iterate wallpapers in given paths, including new ones."""
         known_paths = {path: hash for hash, data in config_data.items()
                                     for path in data["paths"] }
-        now = datetime.now().strftime(Wallpaper.TIME_FORMAT)
+        now = datetime.now()
         images = set(progress(find_images(sources)))
         for path in progress(images):
             if path in known_paths:
@@ -345,30 +347,23 @@ class WallpaperController:
                     continue
             wp = Wallpaper(hash=hash, **data)
             if updated:
-                self.updated_wallpapers.add(wp)
+                self._updated_wallpapers.add(wp)
             yield wp
 
     def notify(self, wallpaper, *_):
-        self.updated_wallpapers.add(wallpaper)
+        self._updated_wallpapers.add(wallpaper)
 
     def save_updates(self):
-        if not self.updated_wallpapers:
+        if not self._updated_wallpapers:
             return
-        updates = dict()
-        now = datetime.now()
-        for wp in self.updated_wallpapers:
-            wp.modified = now
-            updates[wp.hash] = wp.to_json()
-
-        self.config["wallpapers"].update(updates)
-        self.config.save()
-
-        self.updated_wallpapers = set()
-
-        updates_count = len(updates)
-        self.stats["saved_updates"] += updates_count
+        updates_count = len(self._updated_wallpapers)
+        self._config["wallpapers"].update((wp.hash, wp.to_json())
+                                         for wp in self._updated_wallpapers)
+        self._config.save()
+        self._updated_wallpapers = set()
+        self._updates_saved += updates_count
         log.info("%d update%s %ssaved (%d total)",
                  updates_count,
                  "" if updates_count == 1 else "s",
-                 "NOT " if self.config.readonly else "",
-                 self.stats["saved_updates"])
+                 "NOT " if self._config.readonly else "",
+                 self._updates_saved)

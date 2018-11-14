@@ -16,7 +16,7 @@ palette = [
     ('divider', '', '', '', '#666', ''),
     ('focused screen', 'bold', ''),
     ('path', 'underline,brown', ''),
-    ('focused path', 'underline,bold,yellow', '')
+    ('focused path', 'underline,bold,yellow', ''),
 ]
 
 # this is dumb: 'shift 1', 'shift 2', ...
@@ -132,8 +132,8 @@ class ScreenWidget(WidgetWrap):
         elif key == 'U': wp.zoom -= .2
         elif key == 'r': wp.rotate(+90)
         elif key == 'R': wp.rotate(-90)
-        elif key == 'f': wp.flip_vertical()
-        elif key == 'F': wp.flip_horizontal()
+        elif key == 'f': wp.flip_horizontal()
+        elif key == 'F': wp.flip_vertical()
         elif key == 'h' or key == 'left':
             wp.x_offset += 10
         elif key == 'H' or key == 'shift left':

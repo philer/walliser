@@ -3,6 +3,11 @@
 import os
 import gzip
 import json
+from datetime import datetime
+
+TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+TIME_KEYS = {"added", "modified"}
 
 def dict_update_recursive(a, b):
     """Recursiveley merge dictionaries. Mutates first argument."""
@@ -12,15 +17,27 @@ def dict_update_recursive(a, b):
         else:
             a[key] = b[key]
 
-def open_config_file(filename, mode="r"):
+def _open_config_file(filename, mode="r"):
     """Open a file respecting .gz file endings."""
     if filename[-3:] == ".gz":
         return gzip.open(filename, mode, encoding="UTF-8")
     else:
         return open(filename, mode, encoding="UTF-8")
 
+def _serialize(obj):
+    """Serialize things we know how to serialize."""
+    return obj.strftime(TIME_FORMAT)
 
-class Config(dict):
+def _deserialize(obj):
+    for key in TIME_KEYS:
+        try:
+            obj[key] = datetime.strptime(obj[key], TIME_FORMAT)
+        except KeyError:
+            pass
+    return obj
+
+
+class Config:
     """A dictionary that can read and write itself to a JSON file"""
 
     @property
@@ -28,27 +45,40 @@ class Config(dict):
         return self._readonly
 
     def __init__(self, filename, readonly=False):
-        self.filename = filename
         self._readonly = readonly
-        data = {}
+        self._filename = filename
+        self._data = self._load_data()
+
+    def _load_data(self):
         try:
-            with open_config_file(filename, "rt") as config_file:
-                data = json.load(config_file)
+            with _open_config_file(self._filename, "rt") as config_file:
+                return json.load(config_file, object_hook=_deserialize)
         except FileNotFoundError:
-            pass
+            log.info("No config found at '%s'", self._filename)
+            return {"modified": datetime.min}
         except ValueError: # bad json
             # only raise if the file was not empty (i.e. actually malformed)
-            if os.stat(self.filename).st_size != 0:
+            if os.stat(self._filename).st_size != 0:
                 raise
-        super().__init__(**data)
+
+    def __getitem__(self, key):
+        return self._data[key]
 
     def rec_update(self, data):
         """update recursively (only dicts, no other collection types)"""
-        dict_update_recursive(self, data)
+        dict_update_recursive(self._data, data)
 
     def save(self):
         """Save current configuration into given file."""
         if self.readonly:
             return
-        with open_config_file(self.filename, "wt") as config_file:
-            json.dump(self, config_file, sort_keys=True, separators=(",", ":"))
+        data = self._load_data()
+        if data["modified"] > self._data["modified"]:
+            log.info("Config has been outdated since startup.")
+            dict_update_recursive(data, self._data)
+        else:
+            data = self._data
+        data["modified"] = self._data["modified"] = datetime.now()
+        with _open_config_file(self._filename, "wt") as config_file:
+            json.dump(data, config_file, default=_serialize, sort_keys=True,
+                      separators=(",", ":"))
