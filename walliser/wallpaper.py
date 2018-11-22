@@ -79,11 +79,12 @@ class Wallpaper(Observable):
     __slots__ = ('hash', 'int_hash', 'paths', 'invalid_paths',
                  'format', '_width', '_height',
                  'added', 'modified',
-                 '_rating', '_purity', 'tags',
+                 '_rating', '_purity', '_tags',
                  '_x_offset', '_y_offset', '_zoom', '_transformations')
 
     rating = observed_property("rating", 0)
     purity = observed_property("purity", 0)
+    tags = observed_property("tags", ())
     x_offset = observed_property("x_offset", 0)
     y_offset = observed_property("y_offset", 0)
     zoom = observed_property("zoom", 1)
@@ -116,7 +117,6 @@ class Wallpaper(Observable):
         self.added = added
         self.modified = modified
         self.invalid_paths = invalid_paths or []
-        self.tags = tags or []
         for attr, value in props.items():
             setattr(self, "_" + attr, value)
         self.subscribe(self)
@@ -166,13 +166,11 @@ class Wallpaper(Observable):
     def open(self):
         subprocess.Popen(args=("/usr/bin/eog", self.path))
 
-    @observed
-    def toggle_tag(self, tag):
-        try:
-            self.tags.remove(tag)
-        except ValueError:
-            self.tags.append(tag)
-            self.tags.sort()
+    @tags.setter
+    def tags(self, tags):
+        if isinstance(tags, str):
+            tags = map(str.strip, tags.split(","))
+        self._tags = tuple(sorted(set(filter(None, tags))))
 
     def check_paths(self):
         for path in self.paths:

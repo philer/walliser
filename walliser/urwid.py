@@ -4,7 +4,7 @@ import logging
 
 import urwid
 from urwid import (MainLoop, ExitMainLoop, WidgetWrap,
-                   Frame, Pile, Columns, ListBox, Text, Divider, AttrMap)
+                   Frame, Pile, Columns, ListBox, Text, Edit, Divider, AttrMap)
 
 from .util import CallbackLogHandler
 
@@ -51,6 +51,78 @@ class PathWidget(Text):
         self.set_text(('focused path' if focus else 'path', self.text))
         return super().render(size, focus)
 
+class Parenthesis(WidgetWrap):
+
+    def get_text(self):
+        if self._editable:
+            return self._content.get_edit_text()
+        return self._content.get_text()[0]
+
+    def set_text(self, text):
+        try:
+            self._content.set_text(text)
+        except urwid.widget.EditError:
+            self._content.set_edit_text(text)
+        self._update()
+
+    text = property(get_text, set_text)
+
+    @property
+    def editable(self):
+        return self._editable
+
+    @editable.setter
+    def editable(self, yes):
+        if self._editable == yes:
+            return
+        self._editable = yes
+        if yes:
+            self._content = Edit(caption="tags:", edit_text=self._content.get_text()[0])
+            self._update()
+            # self._content.set_edit_pos(1000000)
+            self._root.focus_position = 1
+        else:
+            self._content = Text(self._content.get_edit_text())
+            self._update()
+
+    def __init__(self, text):
+        self._editable = False
+        self._content = Text(text)
+        self._root = Columns(())
+        self._content_options = self._root.options('pack')
+        self._left = Text(" ("), self._root.options('given', 2)
+        self._right = Text(")"), self._root.options('given', 1)
+        self._update()
+        super().__init__(self._root)
+
+    def selectable(self):
+        return self._editable
+
+    def pack(self, size=None, focus=False):
+        width, _ = self._content.pack()
+        return (2 + width + 1, 1)
+
+    def keypress(self, size, key):
+        if self._editable:
+            if key == 'enter' or key == 'esc':
+                return key
+            else:
+                # make sure unhandled navigation doesn't leak
+                self._content.keypress(size, key)
+                return
+        return key
+
+    def _visible(self):
+        return self._editable or bool(self.text)
+
+    def _update(self):
+        if self._visible():
+            self._root.contents = [self._left,
+                                   (self._content, self._content_options),
+                                   self._right]
+        else:
+            self._root.contents.clear()
+
 
 class ScreenWidget(WidgetWrap):
 
@@ -64,16 +136,18 @@ class ScreenWidget(WidgetWrap):
         self._left_border = Text(" ")
         # self._playpause = Text("⏸")
         self._info = Text(self._info_template)
-        self._transformations = Text("")
-        info = Columns([
+        self._transformations = Parenthesis("")
+        self._tags = Parenthesis("")
+        self._top = Columns([
             (1, self._left_border),
             # (2, self._playpause),
             ('pack', self._info),
             ('pack', self._transformations),
+            ('pack', self._tags),
         ])
         self._path = PathWidget()
         self._root = AttrMap(Pile([
-            info,
+            self._top,
             Columns([(1, self._left_border), self._path]),
         ]), None, 'focused screen')
         super().__init__(self._root)
@@ -99,24 +173,27 @@ class ScreenWidget(WidgetWrap):
             height=wp.height,
             scale=self._screen.wallpaper_scale,
         ))
-        parts = []
+        trafos = []
         if wp.x_offset or wp.y_offset:
-            parts.append("{:+},{:+}".format(wp.x_offset, wp.y_offset))
+            trafos.append("{:+},{:+}".format(wp.x_offset, wp.y_offset))
         if wp.zoom != 1:
-            parts.append("{:.0%}".format(wp.zoom))
+            trafos.append("{:.0%}".format(wp.zoom))
         if wp.transformations[2]:
-            parts.append(str(wp.transformations[2]) + "°")
+            trafos.append(str(wp.transformations[2]) + "°")
         if wp.transformations[0]:
-            parts.append("↔")
+            trafos.append("↔")
         if wp.transformations[1]:
-            parts.append("↕")
-        if parts:
-            self._transformations.set_text(" (" + ",".join(parts) + ")")
-        else:
-            self._transformations.set_text("")
+            trafos.append("↕")
+        self._transformations.set_text(",".join(trafos))
+        self._tags.set_text(",".join(wp.tags))
         self._path.set_text(wp.path)
 
     def keypress(self, size, key):
+        if self._top.focus.selectable():
+            child_result = self._top.keypress(size, key)
+            if child_result is None:
+                return
+
         wp = self._screen.wallpaper
         if key == 'delete': self._screen.wallpapers.remove_current()
         elif key == 'o': wp.open()
@@ -158,8 +235,20 @@ class ScreenWidget(WidgetWrap):
             del wp.x_offset
             del wp.y_offset
             del wp.transformations
+        elif key == 't':
+            if wp.tags:
+                self._tags.text += ","
+            self._tags.editable = True
+            self._top.focus_position = 3
+            return
+        elif key == 'enter' and self._tags.editable:
+            self._tags.editable = False
+            wp.tags = self._tags.text
+        elif key == 'esc' and self._tags.editable:
+            self._tags.editable = False
+            self._tags.text = ",".join(wp.tags)
         else:
-            return super().keypress(size, key)
+            return key
         self.update()
         self._scrctrl.display_wallpapers()
 
