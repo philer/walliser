@@ -106,7 +106,7 @@ class Wallpaper(Observable):
         self.transformations = _simple_trans.get(new_trafos, new_trafos)
 
     def __init__(self, hash, paths, format, width, height, added, modified,
-                 invalid_paths=None, tags=None, **props):
+                 invalid_paths=None, **props):
         super().__init__()
         self.hash = hash
         self.int_hash = builtins.hash(int(hash, 16)) # truncated int
@@ -167,6 +167,7 @@ class Wallpaper(Observable):
         subprocess.Popen(args=("/usr/bin/eog", self.path))
 
     @tags.setter
+    @observed
     def tags(self, tags):
         if isinstance(tags, str):
             tags = map(str.strip, tags.split(","))

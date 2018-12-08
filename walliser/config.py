@@ -3,7 +3,10 @@
 import os
 import gzip
 import json
+import logging
 from datetime import datetime
+
+log = logging.getLogger(__name__)
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
