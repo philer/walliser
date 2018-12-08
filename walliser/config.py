@@ -47,6 +47,12 @@ class Config:
     def readonly(self):
         return self._readonly
 
+    @readonly.setter
+    def readonly(self, yes):
+        if not yes:
+            raise ValueError("Can not disable readonly on config after initialization.")
+        self._readonly = True
+
     def __init__(self, filename, readonly=False):
         self._readonly = readonly
         self._filename = filename

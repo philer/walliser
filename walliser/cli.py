@@ -7,6 +7,8 @@ Usage:
            [-c CONFIG_FILE] [--readonly]
            [--quiet | -v | -vv | -vvv]
            [--] [FILES/DIRS ...]
+  walliser (--list | --list-tags) [-c CONFIG_FILE]
+           [-q QUERY] [--] [FILES/DIRS ...]
   walliser --maintenance [-c CONFIG_FILE] [--readonly]
   walliser -h | --help | --version
 
@@ -22,15 +24,22 @@ Options:
                  will use WALLISER_DATABASE_FILE from environment variable or
                  default to ~/.walliser.json.gz instead.
      --readonly  Don't write anything to the configuration file.
+  -l --list      List all wallpaper paths which match a given query
+  -t --list-tags
+                 Show a list of all tags with number of wallpapers and exit.
+                 (respects --query)
+     --remove-tag
+                 Remove given tag from all wallpapers (respects --query)
      --maintenance
   -v --verbose   Show more and more info.
      --quiet     Don't write any output after exiting fullscreen.
   -h --help      Show this help message and exit.
-
 """
+
 import os
 import sys
 import logging
+from collections import Counter
 
 from docopt import docopt
 
@@ -83,20 +92,36 @@ def main():
             config_file = os.environ['HOME'] + "/.walliser.json.gz"
         config = Config(config_file, readonly=args["--readonly"])
 
-        if args["--maintenance"]:
+        if args["--list"]:
+            config.readonly = True
+            wpctrl = WallpaperController(config=config,
+                                         sources=args["FILES/DIRS"],
+                                         query=args["--query"],
+                                         sort=True)
+            for wp in wpctrl.wallpapers:
+                print(wp.path)
+        elif args["--list-tags"]:
+            config.readonly = True
+            wpctrl = WallpaperController(config=config,
+                                         sources=args["FILES/DIRS"],
+                                         query=args["--query"])
+            tags = Counter()
+            for wp in wpctrl.wallpapers:
+                tags.update(wp.tags)
+            max_tag_width = max(map(len, tags))
+            for tag, count in tags.most_common():
+                print(f"{tag:>{max_tag_width}} {count}")
+        elif args["--maintenance"]:
             from walliser import maintenance
-            wpctrl = WallpaperController(config=config, ui=None, sort=True)
+            wpctrl = WallpaperController(config=config, sort=True)
             maintenance.run(wpctrl)
         else:
             # run the actual application
             logging_handler.auto_flush = False
-            wpctrl = WallpaperController(
-                config,
-                sources=args["FILES/DIRS"],
-                query=args["--query"],
-                sort=args["--sort"],
-            )
-            # Core(config, wpctrl, interval=float(args["--interval"]))
+            wpctrl = WallpaperController(config=config,
+                                         sources=args["FILES/DIRS"],
+                                         query=args["--query"],
+                                         sort=args["--sort"])
             scrctrl = ScreenController(wpctrl)
             scrctrl.display_wallpapers()
             Ui(scrctrl, wpctrl).run_loop()
