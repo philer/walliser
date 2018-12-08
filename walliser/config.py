@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import shutil
 import gzip
 import json
 import logging
@@ -88,6 +89,13 @@ class Config:
         else:
             data = self._data
         data["modified"] = self._data["modified"] = datetime.now()
+
+        # one backup per day keeps sorrow at bay
+        backup = self._filename + f".{datetime.now():%Y-%m-%d}.backup"
+        if not os.path.isfile(backup):
+            log.info(f"Creating config backup '{backup}'")
+            shutil.copyfile(self._filename, backup)
+
         with _open_config_file(self._filename, "wt") as config_file:
             json.dump(data, config_file, default=_serialize, sort_keys=True,
                       separators=(",", ":"))
