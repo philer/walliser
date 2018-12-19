@@ -232,13 +232,13 @@ def make_query(expression):
     attributes = ("rating", "purity", "tags",
                   "width", "height", "format",
                   "added", "modified",
-                  "x_offset", "y_offset", "zoom")
+                  "x_offset", "y_offset", "zoom", "transformations")
     builtins = {"min": min, "max": max, "sum": sum, "map": map,
                 "int": int, "bool": bool, "str": str, "repr": repr,
                 "parse_relative_time": parse_relative_time}
-    keywords = set(builtins) | {"and", "or", "not", "for", "in", "if", "lambda",
+    keywords = set(builtins) | {"and", "or", "not", "lambda",
+                                "if", "then", "else", "for", "in",
                                 "True", "False", "None"}
-    time_pattern = re.compile(r"t(:?\d+[sMHdwmy])+")
     def replacer(match):
         """Replace abbreviated attributes and tags."""
         word = match.group(0)
@@ -247,11 +247,11 @@ def make_query(expression):
         for attr in attributes:
             if attr.startswith(word):
                 return "wp." + attr
-        if time_pattern.fullmatch(word):
-            return "parse_relative_time('{}')".format(word[1:])
-        return "('{}' in wp.tags)".format(word)
+        if re.fullmatch(r"(:?\d+[sMHdwmy])+", word):
+            return f"parse_relative_time('{word[1:]}')"
+        return f"('{word}' in wp.tags)"
 
-    expression = re.sub(r"[A-Za-z_][A-Za-z0-9_]*", replacer, expression)
+    expression = re.sub(r"[A-Za-z][A-Za-z0-9_]*", replacer, expression)
     definition = "lambda wp: bool({})".format(expression)
     try:
         # Let's hope this is safe. Mainly guard against accidents.
