@@ -4,6 +4,8 @@ import subprocess
 import logging
 import re
 
+from dataclasses import dataclass
+
 log = logging.getLogger(__name__)
 
 def get_screens_data():
@@ -72,8 +74,17 @@ class Collection:
         self._position = (self._position - 1) % len(self._items)
 
 
+@dataclass
 class Screen:
     """Model representing one (usually physical) monitor"""
+
+    idx: int
+    output: str
+    width: int
+    height: int
+    wallpapers: Collection
+    primary: bool = False
+    connected: bool = False
 
     @property
     def wallpaper(self):
@@ -84,22 +95,6 @@ class Screen:
         wp = self.wallpaper
         return wp.zoom * max(self.width / wp.width, self.height / wp.height)
 
-    def __init__(self, idx, wallpapers, **props):
-        super().__init__()
-        self.idx = idx
-        self.wallpapers = wallpapers
-        for attr, value in props.items():
-            setattr(self, attr, value)
-
-    def __repr__(self):
-        return self.__class__.__name__ + ":" + str(self.idx)
-
-    def __int__(self):
-        return self.idx
-
-    def __index__(self):
-        return self.idx
-
 
 class ScreenController:
     """Manage available screens, cycling through them, pausing etc."""
@@ -107,8 +102,10 @@ class ScreenController:
     def __init__(self, wallpaper_controller):
         wallpaper_source = iter(wp for wp in wallpaper_controller.wallpapers
                                 if wp.check_paths())
-        self.screens = tuple(Screen(idx, Collection(wallpaper_source), **data)
-                             for idx, data in enumerate(get_screens_data()))
+        self.screens = tuple(Screen(idx=i,
+                                    wallpapers=Collection(wallpaper_source),
+                                    **data)
+                             for i, data in enumerate(get_screens_data()))
         if self.screens:
             log.debug("Found %d screens.", len(self.screens))
         else:
