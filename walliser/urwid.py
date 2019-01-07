@@ -259,7 +259,7 @@ class ScreenWidget(WidgetWrap):
         self._scrctrl.display_wallpapers()
 
     def mouse_event(self, size, event, button, *_):
-        if event == 'mouse release' and button == 1:
+        if event == 'mouse release':
             self._screen.wallpaper.open()
         elif event == 'mouse press' and button == 4:
             self._screen.wallpapers.prev()
