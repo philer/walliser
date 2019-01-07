@@ -118,7 +118,7 @@ class Wallpaper(Observable):
         self.modified = modified
         self.invalid_paths = invalid_paths or []
         for attr, value in props.items():
-            setattr(self, "_" + attr, value)
+            setattr(self, attr, value)
         self.subscribe(self)
 
     def notify(self, *_):
@@ -150,8 +150,7 @@ class Wallpaper(Observable):
         }
         # attributes with common defaults may not need to be stored
         for attr in ('rating', 'purity',
-                     'x_offset', 'y_offset', 'zoom',
-                     'rotate', 'flip_vertical', 'flip_horizontal'):
+                     'x_offset', 'y_offset', 'zoom', 'transformations'):
             try:
                 data[attr] = getattr(self, "_" + attr)
             except AttributeError:

@@ -46,9 +46,14 @@ def observed(method):
         self._notify_observers(method.__name__, *args, **kwargs)
     return wrapper
 
-def observed_property(property_name, default):
+def observed_property(property_name, default, cast=None):
     """Default must be immutable."""
     hidden_property_name = "_" + property_name
+    if cast is None:
+        if cast is False:
+            cast = lambda x: x
+        else:
+            cast = type(default)
     def getter(self):
         try:
             return getattr(self, hidden_property_name)
@@ -60,6 +65,7 @@ def observed_property(property_name, default):
         except AttributeError:
             pass
     def setter(self, value):
+        value = cast(value)
         if value == default:
             try:
                 delattr(self, hidden_property_name)
