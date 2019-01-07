@@ -262,6 +262,9 @@ class Ui:
         self._scrctrl = screen_controller
         self._wpctrl = wallpaper_controller
         self._layout()
+
+        self._reading_command = False
+
         self._loop = MainLoop(widget=self._root,
                               palette=palette,
                               unhandled_input=self._handle_global_input)
@@ -276,14 +279,17 @@ class Ui:
     def _layout(self):
         self._wallpaper_count = Text(str(len(self._wpctrl.wallpapers)))
         self._info = Text("", wrap='clip')
+        self._head = Columns([('pack', self._wallpaper_count),
+                              (10, Text("Wallpapers")),
+                              self._info],
+                             dividechars=1)
+        header = Pile([self._head, AttrMap(Divider("─"), 'divider')])
+
         self._screens = [ScreenWidget(screen, self._scrctrl)
                          for screen in self._scrctrl.screens]
-        header = Pile([Columns([('pack', self._wallpaper_count),
-                                ('pack', Text(" Wallpapers ⋮ ")),
-                                self._info]),
-                       AttrMap(Divider("─"), 'divider')])
-        self._root = Frame(header=header,
-                           body=ListBoxWithTabSupport(self._screens))
+        body = ListBoxWithTabSupport(self._screens)
+
+        self._root = Frame(header=header, body=body)
 
 
     def run_loop(self):
@@ -294,12 +300,35 @@ class Ui:
 
 
     def info(self, message):
-        self._info.set_text(message)
+        self._info.set_text("⋮ " + str(message))
 
+    def _start_reading_command(self):
+        self._reading_command = True
+        self._info = Edit(caption="_⟩ ", wrap='clip')
+        self._head.contents[2] = (self._info, self._head.options('pack'))
+        self._root.set_focus_path(("header", 0, 2))
+
+    def _finish_reading_command(self):
+        command = self._info.get_edit_text()
+        self._info = Text("", wrap='clip')
+        self._head.contents[2] = (self._info, self._head.options('pack'))
+        self._root.focus_position = "body"
+        self._reading_command = False
+        return command
 
     def _handle_global_input(self, key):
+        if self._reading_command:
+            if key == 'esc':
+                self._finish_reading_command()
+            elif key == 'enter':
+                command = self._finish_reading_command()
+                log.info(f"Commands ({command}) are not implemented yet.")
+            return
+
         if key == 'esc':
             raise ExitMainLoop()
+        elif key == ':' or key == '-':
+            self._start_reading_command()
         elif key == 'ctrl s':
             self._wpctrl.save_updates()
         elif key == 'x':
