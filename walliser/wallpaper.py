@@ -265,7 +265,7 @@ class WallpaperController:
     """Manages a collection of relevant wallpapers and takes care of some
     config related IO (TODO: isolate the IO)."""
 
-    def __init__(self, config, sources=None, query="True", sort=False):
+    def __init__(self, config, sources=None, query="True", sort=True):
         self._config = config
         self._updated_wallpapers = set()
         self._updates_saved = 0

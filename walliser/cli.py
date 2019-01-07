@@ -91,37 +91,27 @@ def main():
         else:
             config_file = os.environ['HOME'] + "/.walliser.json.gz"
         config = Config(config_file, readonly=args["--readonly"])
-
+        wpctrl = WallpaperController(config=config,
+                                     sources=args["FILES/DIRS"],
+                                     query=args["--query"],
+                                     sort=args["--sort"])
         if args["--list"]:
             config.readonly = True
-            wpctrl = WallpaperController(config=config,
-                                         sources=args["FILES/DIRS"],
-                                         query=args["--query"],
-                                         sort=True)
             for wp in wpctrl.wallpapers:
                 print(wp.path)
         elif args["--list-tags"]:
             config.readonly = True
-            wpctrl = WallpaperController(config=config,
-                                         sources=args["FILES/DIRS"],
-                                         query=args["--query"])
-            tags = Counter()
+            tag_counts = Counter()
             for wp in wpctrl.wallpapers:
-                tags.update(wp.tags)
-            max_tag_width = max(map(len, tags))
-            for tag, count in tags.most_common():
+                tag_counts.update(wp.tags)
+            max_tag_width = max(map(len, tag_counts))
+            for tag, count in tag_counts.most_common():
                 print(f"{tag:>{max_tag_width}} {count}")
         elif args["--maintenance"]:
-            from walliser import maintenance
-            wpctrl = WallpaperController(config=config, sort=True)
-            maintenance.run(wpctrl)
+            raise NotImplemented
         else:
             # run the actual application
             logging_handler.auto_flush = False
-            wpctrl = WallpaperController(config=config,
-                                         sources=args["FILES/DIRS"],
-                                         query=args["--query"],
-                                         sort=args["--sort"])
             scrctrl = ScreenController(wpctrl)
             scrctrl.display_wallpapers()
             Ui(scrctrl, wpctrl).run_loop()
