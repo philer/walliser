@@ -42,17 +42,6 @@ def images_in_dir(root_dir):
             yield os.path.realpath(os.path.join(directory, f))
 
 
-# Some combinations of transformations can be simplified
-_simple_trans = {
-    # (flip_horizontal, flip_vertical, rotate)
-    (True, True, 0):     (False, False, 180),
-    (True, True, 90):    (False, False, 270),
-    (False, True, 180):  (True, False, 0),
-    (True, False, 180):  (False, True, 0),
-    (True, True, 180):   (False, False, 0),
-    (True, True, 270):   (False, False, 90),
-}
-
 class Wallpaper(Observable):
     """Model representing one wallpaper"""
 
@@ -89,21 +78,6 @@ class Wallpaper(Observable):
     y_offset = observed_property("y_offset", 0)
     zoom = observed_property("zoom", 1)
     transformations = observed_property("transformations", (False, False, 0))
-
-    def rotate(self, degree):
-        hori, vert, rot = self.transformations
-        new_trafos = hori, vert, (rot + degree) % 360
-        self.transformations = _simple_trans.get(new_trafos, new_trafos)
-
-    def flip_vertical(self):
-        hori, vert, rot = self.transformations
-        new_trafos = hori, not vert, rot
-        self.transformations = _simple_trans.get(new_trafos, new_trafos)
-
-    def flip_horizontal(self):
-        hori, vert, rot = self.transformations
-        new_trafos = not hori, vert, rot
-        self.transformations = _simple_trans.get(new_trafos, new_trafos)
 
     def __init__(self, hash, paths, format, width, height, added, modified,
                  invalid_paths=None, **props):
@@ -191,6 +165,32 @@ class Wallpaper(Observable):
         log.warning("Invalidated wallpaper path '%s' (%s remaining)."
                     "Reason: %s",
                     path, len(self.paths), reason)
+
+    # Some combinations of transformations can be simplified
+    _simple_trans = {
+        # (flip_horizontal, flip_vertical, rotate)
+        (True, True, 0):     (False, False, 180),
+        (True, True, 90):    (False, False, 270),
+        (False, True, 180):  (True, False, 0),
+        (True, False, 180):  (False, True, 0),
+        (True, True, 180):   (False, False, 0),
+        (True, True, 270):   (False, False, 90),
+    }
+
+    def rotate(self, degree):
+        hori, vert, rot = self.transformations
+        new_trafos = hori, vert, (rot + degree) % 360
+        self.transformations = self._simple_trans.get(new_trafos, new_trafos)
+
+    def flip_vertical(self):
+        hori, vert, rot = self.transformations
+        new_trafos = hori, not vert, rot
+        self.transformations = self._simple_trans.get(new_trafos, new_trafos)
+
+    def flip_horizontal(self):
+        hori, vert, rot = self.transformations
+        new_trafos = not hori, vert, rot
+        self.transformations = self._simple_trans.get(new_trafos, new_trafos)
 
     def transformed(self, screen_width=1920, screen_height=1080):
         if not self.has_transformations:
