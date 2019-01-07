@@ -198,7 +198,8 @@ class Wallpaper(Observable):
             return self.path
         unique_hash = hash((self, self.x_offset, self.y_offset, self.zoom,
                             self.transformations))
-        path = "/tmp/walliser_{:x}.jpg".format(unique_hash)
+        path = "/tmp/walliser_{:x}.{:s}".format(unique_hash,
+                                    'jpg' if self.format == 'JPEG' else 'png')
         if os.path.isfile(path):
             log.debug("Found transformed '%s'", path)
             return path
@@ -247,7 +248,7 @@ def make_query(expression):
         for attr in attributes:
             if attr.startswith(word):
                 return "wp." + attr
-        if re.fullmatch(r"(:?\d+[sMHdwmy])+", word):
+        if re.fullmatch(r"t(:?\d+[sMHdwmy])+", word):
             return f"parse_relative_time('{word[1:]}')"
         return f"('{word}' in wp.tags)"
 
