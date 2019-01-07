@@ -17,6 +17,7 @@ palette = [
     ('focused screen', 'bold', ''),
     ('path', 'underline,dark cyan', '', '', 'underline,#6dd', ''),
     ('focused path', 'underline,bold,light cyan', '', '', 'underline,bold,#0ff', ''),
+    ('warning', 'bold,light red', '', '', 'bold,#f60', '')
 ]
 
 # this is dumb: 'shift 1', 'shift 2', ...
@@ -89,7 +90,7 @@ class Parenthesis(WidgetWrap):
         self._content = Text(text)
         self._root = Columns(())
         self._content_options = self._root.options('pack')
-        self._left = Text(" ("), self._root.options('given', 2)
+        self._left = Text("("), self._root.options('given', 1)
         self._right = Text(")"), self._root.options('given', 1)
         self._update()
         super().__init__(self._root)
@@ -127,7 +128,7 @@ class ScreenWidget(WidgetWrap):
 
     _info_template = ("{collection_size:>2g}"
                       " [ {rating} | {purity} ]"
-                      " {format} {width:d}×{height:d} {scale:.0%}")
+                      " {format} {width:d}×{height:d}")
 
     def __init__(self, screen, screen_controller):
         self._screen = screen
@@ -135,15 +136,17 @@ class ScreenWidget(WidgetWrap):
         self._left_border = Text(" ")
         # self._playpause = Text("⏸")
         self._info = Text(self._info_template)
+        self._scale = Text("")
         self._transformations = Parenthesis("")
         self._tags = Parenthesis("")
         self._top = Columns([
             (1, self._left_border),
             # (2, self._playpause),
             ('pack', self._info),
+            ('pack', self._scale),
             ('pack', self._transformations),
             ('pack', self._tags),
-        ])
+        ], dividechars=1)
         self._path = PathWidget()
         self._root = AttrMap(Pile([
             self._top,
@@ -170,7 +173,10 @@ class ScreenWidget(WidgetWrap):
             format=wp.format,
             width=wp.width,
             height=wp.height,
-            scale=self._screen.wallpaper_scale,
+        ))
+        self._scale.set_text((
+            'warning' if self._screen.wallpaper_scale > 1 else None,
+            f"{self._screen.wallpaper_scale:.0%}",
         ))
         trafos = []
         if wp.x_offset or wp.y_offset:
