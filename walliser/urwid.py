@@ -194,6 +194,7 @@ class ScreenWidget(WidgetWrap):
         self._path.set_text(wp.path)
 
     def keypress(self, size, key):
+        log.debug("processing keypress '%s'", key)
         if self._top.focus.selectable():
             child_result = self._top.keypress(size, key)
             if child_result is None:
@@ -257,9 +258,18 @@ class ScreenWidget(WidgetWrap):
         self.update()
         self._scrctrl.display_wallpapers()
 
-    def mouse_event(self, size, event, *_):
-        if event == 'mouse release':
+    def mouse_event(self, size, event, button, *_):
+        if event == 'mouse release' and button == 1:
             self._screen.wallpaper.open()
+        elif event == 'mouse press' and button == 4:
+            self._screen.wallpapers.prev()
+            self.update()
+            self._scrctrl.display_wallpapers()
+        elif event == 'mouse press' and button == 5:
+            self._screen.wallpapers.next()
+            self.update()
+            self._scrctrl.display_wallpapers()
+
 
 
 class Ui:
@@ -348,3 +358,4 @@ class Ui:
             return
         for screen_widget in self._screens:
             screen_widget.update()
+        return True
