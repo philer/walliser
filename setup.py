@@ -30,8 +30,10 @@ setup(
     ],
     packages=['walliser'],
     install_requires=[
-        'pillow',
+        'python-dateutil',
         'docopt',
+        'pillow',
+        'urwid',
     ],
     entry_points = {
         'console_scripts': ['walliser = walliser.cli:main'],
