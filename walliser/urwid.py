@@ -15,8 +15,8 @@ log = logging.getLogger(__name__)
 palette = [
     ('divider', '', '', '', '#666', ''),
     ('focused screen', 'bold', ''),
-    ('path', 'underline,brown', ''),
-    ('focused path', 'underline,bold,yellow', ''),
+    ('path', 'underline,dark cyan', '', '', 'underline,#6dd', ''),
+    ('focused path', 'underline,bold,light cyan', '', '', 'underline,bold,#0ff', ''),
 ]
 
 # this is dumb: 'shift 1', 'shift 2', ...
@@ -79,7 +79,6 @@ class Parenthesis(WidgetWrap):
         if yes:
             self._content = Edit(caption="tags:", edit_text=self._content.get_text()[0])
             self._update()
-            # self._content.set_edit_pos(1000000)
             self._root.focus_position = 1
         else:
             self._content = Text(self._content.get_edit_text())
@@ -126,7 +125,7 @@ class Parenthesis(WidgetWrap):
 
 class ScreenWidget(WidgetWrap):
 
-    _info_template = ("{collection_size:>4g}"
+    _info_template = ("{collection_size:>2g}"
                       " [ {rating} | {purity} ]"
                       " {format} {width:d}×{height:d} {scale:.0%}")
 
