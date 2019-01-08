@@ -65,7 +65,7 @@ class Config:
                 return json.load(config_file, object_hook=_deserialize)
         except FileNotFoundError:
             log.info("No config found at '%s'", self._filename)
-            return {"modified": datetime.min}
+            return {"modified": datetime.min, "wallpapers": {}}
         except ValueError: # bad json
             # only raise if the file was not empty (i.e. actually malformed)
             if os.stat(self._filename).st_size != 0:
@@ -92,10 +92,9 @@ class Config:
 
         # one backup per day keeps sorrow at bay
         backup = self._filename + f".{datetime.now():%Y-%m-%d}.backup"
-        if not os.path.isfile(backup):
+        if os.path.isfile(self._filename) and not os.path.isfile(backup):
             log.info(f"Creating config backup '{backup}'")
             shutil.copyfile(self._filename, backup)
 
         with _open_config_file(self._filename, "wt") as config_file:
-            json.dump(data, config_file, default=_serialize, sort_keys=True,
-                      separators=(",", ":"))
+            json.dump(data, config_file, default=_serialize, separators=(",", ":"))
