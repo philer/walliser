@@ -3,7 +3,7 @@
 """Walliser - A tool for cycling through wallpapers.
 
 Usage:
-  walliser [-q QUERY] [-s] [-i SECONDS]
+  walliser [-q QUERY] [-s KEY] [-i SECONDS]
            [-c CONFIG_FILE] [--readonly]
            [--quiet | -v | -vv | -vvv]
            [--] [FILES/DIRS ...]
@@ -18,7 +18,8 @@ Options:
                  [default: rating >= 0]
   -i SECONDS --interval SECONDS
                  Seconds between updates (may be float) [default: 5]
-  -s --sort      Cycle through wallpapers in alphabetical order of path
+  -s KEY --sort KEY
+                 Cycle through wallpapers in order sorted by attribute KEY
   -c CONFIG_FILE --config-file CONFIG_FILE
                  Read and store wallpaper data in this file. If not specified
                  will use WALLISER_DATABASE_FILE from environment variable or

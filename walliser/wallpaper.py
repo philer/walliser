@@ -5,7 +5,7 @@ import subprocess
 import builtins
 import logging
 from operator import attrgetter
-from random import shuffle
+import random
 from glob import iglob as glob
 import re
 from datetime import datetime
@@ -51,6 +51,11 @@ class Wallpaper(Observable):
             return self.paths[0]
         except IndexError:
             return None
+
+    @property
+    def mtime(self):
+        return os.path.getmtime(self.path)
+
 
     @property
     def width(self):
@@ -265,7 +270,7 @@ class WallpaperController:
     """Manages a collection of relevant wallpapers and takes care of some
     config related IO (TODO: isolate the IO)."""
 
-    def __init__(self, config, sources=None, query="True", sort=True):
+    def __init__(self, config, sources=None, query="True", sort=None):
         self._config = config
         self._updated_wallpapers = set()
         self._updates_saved = 0
@@ -301,17 +306,17 @@ class WallpaperController:
             log.debug("Found %d matching wallpapers.", len(self.wallpapers))
 
         if sort:
-            self.wallpapers.sort(key=attrgetter("path"))
+            log.debug(f"sorting by {sort}")
+            self.wallpapers.sort(key=attrgetter(sort))
         else:
-            shuffle(self.wallpapers)
+            random.shuffle(self.wallpapers)
 
     def wallpapers_from_paths(self, sources, config_data={}):
         """Iterate wallpapers in given paths, including new ones."""
         known_paths = {path: hash for hash, data in config_data.items()
                                     for path in data["paths"] }
         now = datetime.now()
-        images = set(progress(find_images(sources)))
-        for path in progress(images):
+        for path in progress(set(find_images(sources))):
             if path in known_paths:
                 hash = known_paths[path]
                 data = config_data[hash]
