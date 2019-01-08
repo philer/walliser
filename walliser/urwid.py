@@ -234,9 +234,16 @@ class ScreenWidget(WidgetWrap):
         elif key == 'J' or key == 'shift down':
             wp.y_offset -= 100
         elif key == '1':
-            wp.zoom = 1 / max(self._screen.width / wp.width,
-                              self._screen.height / wp.height)
+            # 100% zoom
+            wp.zoom = min(wp.width / self._screen.width,
+                          wp.height / self._screen.height)
+        elif key == '!':
+            # zoom to fit
+            w_rel = self._screen.width / wp.width
+            h_rel = self._screen.height / wp.height
+            wp.zoom = min(w_rel, h_rel) / max(w_rel, h_rel)
         elif key == '0':
+            # zoom to fill (default)
             del wp.zoom
             del wp.x_offset
             del wp.y_offset

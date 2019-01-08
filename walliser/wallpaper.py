@@ -81,7 +81,7 @@ class Wallpaper(Observable):
     tags = observed_property("tags", ())
     x_offset = observed_property("x_offset", 0)
     y_offset = observed_property("y_offset", 0)
-    zoom = observed_property("zoom", 1)
+    zoom = observed_property("zoom", 1.0)
     transformations = observed_property("transformations", (False, False, 0))
 
     def __init__(self, hash, paths, format, width, height, added, modified,
