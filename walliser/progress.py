@@ -107,9 +107,7 @@ class ProgressIndicator(metaclass=ABCMeta):
         self.clear()
 
     def __iter__(self):
-        with self:
-            while True:
-                yield next(self)
+        return self
 
     def __next__(self):
         self.update()
