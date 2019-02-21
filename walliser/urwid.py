@@ -252,7 +252,8 @@ class ScreenWidget(WidgetWrap):
             if wp.tags:
                 self._tags.text += ","
             self._tags.editable = True
-            self._top.focus_position = 3
+            # make sure to adjust when changing the layout:
+            self._top.focus_position = 4
             return
         elif key == 'enter' and self._tags.editable:
             self._tags.editable = False
