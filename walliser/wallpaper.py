@@ -280,7 +280,7 @@ class WallpaperController:
     """Manages a collection of relevant wallpapers and takes care of some
     config related IO (TODO: isolate the IO)."""
 
-    def __init__(self, config, sources=None, query="True", sort=None):
+    def __init__(self, config, sources=None, query="True", sort=None, reverse=False):
         self._config = config
         self._updated_wallpapers = set()
         self._updates_saved = 0
@@ -317,7 +317,7 @@ class WallpaperController:
 
         if sort:
             log.debug(f"sorting by {sort}")
-            self.wallpapers.sort(key=attrgetter(sort))
+            self.wallpapers.sort(key=attrgetter(sort), reverse=reverse)
         else:
             random.shuffle(self.wallpapers)
 

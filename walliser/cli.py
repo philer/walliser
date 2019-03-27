@@ -3,12 +3,12 @@
 """Walliser - A tool for cycling through wallpapers.
 
 Usage:
-  walliser [-q QUERY] [-s KEY] [-i SECONDS]
+  walliser [-q QUERY] [-s KEY [--reverse]] [-i SECONDS]
            [-c CONFIG_FILE] [--readonly]
            [--quiet | -v | -vv | -vvv]
            [--] [FILES/DIRS ...]
   walliser (--list | --list-tags) [-c CONFIG_FILE]
-           [-q QUERY] [--] [FILES/DIRS ...]
+           [-q QUERY] [-s KEY [--reverse]] [--] [FILES/DIRS ...]
   walliser --maintenance [-c CONFIG_FILE] [--readonly]
   walliser -h | --help | --version
 
@@ -20,6 +20,8 @@ Options:
                  Seconds between updates (may be float) [default: 5]
   -s KEY --sort KEY
                  Cycle through wallpapers in order sorted by attribute KEY
+         --reverse
+                 Sort backwards
   -c CONFIG_FILE --config-file CONFIG_FILE
                  Read and store wallpaper data in this file. If not specified
                  will use WALLISER_DATABASE_FILE from environment variable or
@@ -95,7 +97,8 @@ def main():
         wpctrl = WallpaperController(config=config,
                                      sources=args["FILES/DIRS"],
                                      query=args["--query"],
-                                     sort=args["--sort"])
+                                     sort=args["--sort"],
+                                     reverse=args["--reverse"])
         if args["--list"]:
             config.readonly = True
             for wp in wpctrl.wallpapers:
