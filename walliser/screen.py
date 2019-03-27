@@ -119,6 +119,8 @@ class ScreenController:
         if paths != self._live_wallpaper_paths:
             self._live_wallpaper_paths = paths
             _display_wallpapers(paths)
+            for screen in self.screens:
+                screen.wallpaper.increment_views()
 
     def cycle_collections(self):
         first = self.screens[0].wallpapers

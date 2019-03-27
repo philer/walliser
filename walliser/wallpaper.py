@@ -73,9 +73,11 @@ class Wallpaper(Observable):
     __slots__ = ('hash', 'int_hash', 'paths', 'invalid_paths',
                  'format', '_width', '_height',
                  'added', 'modified',
+                 '_views', '_views_incremented',
                  '_rating', '_purity', '_tags',
                  '_x_offset', '_y_offset', '_zoom', '_transformations')
 
+    views = observed_property("views", 0)
     rating = observed_property("rating", 0)
     purity = observed_property("purity", 0)
     tags = observed_property("tags", ())
@@ -85,7 +87,7 @@ class Wallpaper(Observable):
     transformations = observed_property("transformations", (False, False, 0))
 
     def __init__(self, hash, paths, format, width, height, added, modified,
-                 invalid_paths=None, **props):
+                 invalid_paths=None, views=0, **props):
         super().__init__()
         self.hash = hash
         self.int_hash = builtins.hash(int(hash, 16)) # truncated int
@@ -96,6 +98,7 @@ class Wallpaper(Observable):
         self.added = added
         self.modified = modified
         self.invalid_paths = invalid_paths or []
+        self._views = views
         for attr, value in props.items():
             setattr(self, attr, value)
         self.subscribe(self)
@@ -128,7 +131,7 @@ class Wallpaper(Observable):
             'modified': self.modified,
         }
         # attributes with common defaults may not need to be stored
-        for attr in ('rating', 'purity',
+        for attr in ('views', 'rating', 'purity',
                      'x_offset', 'y_offset', 'zoom', 'transformations'):
             try:
                 data[attr] = getattr(self, "_" + attr)
@@ -140,6 +143,13 @@ class Wallpaper(Observable):
             if value:
                 data[attr] = value
         return data
+
+    def increment_views(self):
+        """Idempotent for this session"""
+        if hasattr(self, '_views_incremented'):
+            return
+        self._views_incremented = True
+        self.views += 1
 
     def open(self):
         subprocess.Popen(args=("/usr/bin/eog", self.path))
@@ -234,7 +244,7 @@ def make_query(expression):
     """Turn an expression into a function, assigning Wallpaper properties to
     (possibly abbreviated) variable names as needed. Unknown names are
     interpreted as tags."""
-    attributes = ("rating", "purity", "tags",
+    attributes = ("views", "rating", "purity", "tags",
                   "width", "height", "format",
                   "added", "modified",
                   "x_offset", "y_offset", "zoom", "transformations")
