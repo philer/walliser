@@ -21,9 +21,9 @@ def get_screens_data():
         yield {name: type(value) for (name, type), value in zip(props, match)}
 
 
-def _display_wallpapers(paths):
+def _feh_display_wallpapers(paths, primary=0):
     """Low level wallpaper setter using feh"""
-    args = ("feh", "--bg-fill", "--no-fehbg") + tuple(paths)
+    args = ("feh", "--bg-fill", "--no-fehbg", paths[primary]) + tuple(paths[:primary]) + tuple(paths[primary+1:])
     try:
         subprocess.run(args=args, check=True, universal_newlines=True,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -110,6 +110,7 @@ class ScreenController:
             log.debug("Found %d screens.", len(self.screens))
         else:
             raise Exception("No screens found.")
+        self._primary_idx = next(s for s in self.screens if s.primary).idx
         self._live_wallpaper_paths = None
 
     def display_wallpapers(self):
@@ -118,7 +119,7 @@ class ScreenController:
                       for screen in self.screens)
         if paths != self._live_wallpaper_paths:
             self._live_wallpaper_paths = paths
-            _display_wallpapers(paths)
+            _feh_display_wallpapers(paths, primary=self._primary_idx)
             for screen in self.screens:
                 screen.wallpaper.increment_views()
 
