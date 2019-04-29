@@ -163,24 +163,26 @@ class Wallpaper(Observable):
         self._tags = tuple(sorted(set(filter(None, tags))))
 
     def check_paths(self):
+        invalid_paths = []
         for path in self.paths:
             if not os.path.isfile(path):
-                self._invalidate_path(path, "File does not exist.")
+                invalid_paths.append(path)
             elif not os.access(path, os.R_OK):
-                self._invalidate_path(path, "No permission to read file.")
+                log.warning("No permission to read file '%s'", path)
+        for path in invalid_paths:
+            self._invalidate_path(path)
         if not self.paths:
             log.warning("No valid paths left for wallpaper '%s'", self.hash)
             return False
         return True
 
     @observed
-    def _invalidate_path(self, path, reason):
+    def _invalidate_path(self, path):
         self.paths.remove(path)
         if path not in self.invalid_paths:
             self.invalid_paths.append(path)
-        log.warning("Invalidated wallpaper path '%s' (%s remaining)."
-                    "Reason: %s",
-                    path, len(self.paths), reason)
+        log.debug("Invalidated wallpaper path '%s' (%s remaining).",
+                  path, len(self.paths))
 
     # Some combinations of transformations can be simplified
     _simple_trans = {

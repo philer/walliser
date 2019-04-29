@@ -9,7 +9,7 @@ Usage:
            [--] [FILES/DIRS ...]
   walliser (--list | --list-tags) [-c CONFIG_FILE]
            [-q QUERY] [-s KEY [--reverse]] [--] [FILES/DIRS ...]
-  walliser --maintenance [-c CONFIG_FILE] [--readonly]
+  walliser --maintenance [-c CONFIG_FILE] [--readonly] [--quiet | -v | -vv | -vvv]
   walliser -h | --help | --version
 
 Options:
@@ -85,7 +85,6 @@ def main():
     logging_handler = setup_logging(args["--verbose"], args["--quiet"])
     log.debug("Starting up on python %s.", sys.version)
 
-    exitcode = 0
     try:
         if args["--config-file"]:
             config_file = args["--config-file"]
@@ -94,6 +93,20 @@ def main():
         else:
             config_file = os.environ['HOME'] + "/.walliser.json.gz"
         config = Config(config_file, readonly=args["--readonly"])
+
+        if args["--maintenance"]:
+            wpctrl = WallpaperController(config=config, query="True")
+            delete_hashes = set()
+            for wp in wpctrl.wallpapers:
+                if not wp.check_paths() and wp.rating <= 0:
+                    delete_hashes.add(wp.hash)
+            wpctrl.save_updates()
+            log.info("Deleting {} dead entries.".format(len(delete_hashes)))
+            for hash in delete_hashes:
+                del config._data["wallpapers"][hash]
+            return 0
+
+
         wpctrl = WallpaperController(config=config,
                                      sources=args["FILES/DIRS"],
                                      query=args["--query"],
@@ -111,8 +124,6 @@ def main():
             max_tag_width = max(map(len, tag_counts))
             for tag, count in tag_counts.most_common():
                 print(f"{tag:>{max_tag_width}} {count}")
-        elif args["--maintenance"]:
-            raise NotImplemented
         else:
             # run the actual application
             logging_handler.auto_flush = False
@@ -120,19 +131,20 @@ def main():
             scrctrl.display_wallpapers()
             Ui(scrctrl, wpctrl).run_loop()
             wpctrl.save_updates()
+        return 0
     except (KeyboardInterrupt, SystemExit):
-        pass
+        return 0
     except Exception as e:
-        exitcode = 1
         log.exception(str(e))
         if args["--verbose"]:
             raise
+        return 1
     finally:
         log.debug("bye.")
         logging_handler.auto_flush = True
         logging_handler.flush()
-        sys.exit(exitcode)
+
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

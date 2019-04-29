@@ -65,11 +65,11 @@ class Config:
                 return json.load(config_file, object_hook=_deserialize)
         except FileNotFoundError:
             log.info("No config found at '%s'", self._filename)
-            return {"modified": datetime.min, "wallpapers": {}}
         except ValueError: # bad json
             # only raise if the file was not empty (i.e. actually malformed)
             if os.stat(self._filename).st_size != 0:
                 raise
+        return {"modified": datetime.min, "wallpapers": {}}
 
     def __getitem__(self, key):
         return self._data[key]
