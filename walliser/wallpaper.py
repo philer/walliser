@@ -152,7 +152,8 @@ class Wallpaper(Observable):
         self.views += 1
 
     def open(self):
-        subprocess.Popen(args=("/usr/bin/eog", self.path))
+        # subprocess.Popen(args=("/usr/bin/eog", self.path))
+        subprocess.Popen(args=("feh", "--fullscreen", self.path))
 
     @tags.setter
     @observed
