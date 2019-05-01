@@ -93,7 +93,8 @@ class Screen:
     @property
     def wallpaper_scale(self):
         wp = self.wallpaper
-        return wp.zoom * max(self.width / wp.width, self.height / wp.height)
+        return wp.transformation.zoom * max(self.width / wp.transformed_width,
+                                            self.height / wp.transformed_height)
 
 
 class ScreenController:

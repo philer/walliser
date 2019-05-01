@@ -178,19 +178,20 @@ class ScreenWidget(WidgetWrap):
             'warning' if self._screen.wallpaper_scale > 1 else None,
             f"{self._screen.wallpaper_scale:.0%}",
         ))
-        trafos = []
-        if wp.x_offset or wp.y_offset:
-            trafos.append("{:+},{:+}".format(wp.x_offset, wp.y_offset))
-        if wp.zoom != 1:
-            trafos.append("{:.0%}".format(wp.zoom))
-        if wp.transformations[2]:
-            trafos.append(str(wp.transformations[2]) + "°")
-        if wp.transformations[0]:
-            trafos.append("↔")
-        if wp.transformations[1]:
-            trafos.append("↕")
-        self._transformations.set_text(",".join(trafos))
-        self._tags.set_text(",".join(wp.tags))
+        trafo = wp.transformation
+        trafo_strings = []
+        if trafo.x_offset or trafo.y_offset:
+            trafo_strings.append("{:+},{:+}".format(trafo.x_offset, trafo.y_offset))
+        if trafo.zoom != 1:
+            trafo_strings.append("{:.0%}".format(trafo.zoom))
+        if trafo.rotate:
+            trafo_strings.append(str(trafo.rotate) + "°")
+        if trafo.horizontal:
+            trafo_strings.append("↔")
+        if trafo.vertical:
+            trafo_strings.append("↕")
+        self._transformations.set_text(",".join(trafo_strings))
+        self._tags.set_text(",".join(sorted(wp.tags)))
         self._path.set_text(wp.path)
 
     def keypress(self, size, key):
@@ -209,45 +210,42 @@ class ScreenWidget(WidgetWrap):
         elif key == 'w': wp.rating += 1
         elif key == 'd': wp.purity += 1
         elif key == 'e': wp.purity -= 1
-        elif key == 'z': wp.zoom += .05
-        elif key == 'Z': wp.zoom += .2
-        elif key == 'u': wp.zoom -= .05
-        elif key == 'U': wp.zoom -= .2
+        elif key == 'z': wp.zoom_by(.05)
+        elif key == 'Z': wp.zoom_by(.2)
+        elif key == 'u': wp.zoom_by(-.05)
+        elif key == 'U': wp.zoom_by(-.2)
         elif key == 'r': wp.rotate(+90)
         elif key == 'R': wp.rotate(-90)
         elif key == 'f': wp.flip_horizontal()
         elif key == 'F': wp.flip_vertical()
         elif key == 'h' or key == 'left':
-            wp.x_offset += 10
+            wp.shift(x=10)
         elif key == 'H' or key == 'shift left':
-            wp.x_offset += 100
+            wp.shift(x=100)
         elif key == 'l' or key == 'right':
-            wp.x_offset -= 10
+            wp.shift(x=-10)
         elif key == 'L' or key == 'shift right':
-            wp.x_offset -= 100
+            wp.shift(x=-100)
         elif key == 'k' or key == 'up':
-            wp.y_offset += 10
+            wp.shift(y=10)
         elif key == 'K' or key == 'shift up':
-            wp.y_offset += 100
+            wp.shift(y=100)
         elif key == 'j' or key == 'down':
-            wp.y_offset -= 10
+            wp.shift(y=-10)
         elif key == 'J' or key == 'shift down':
-            wp.y_offset -= 100
+            wp.shift(y=-100)
         elif key == '1':
             # 100% zoom
-            wp.zoom = min(wp.width / self._screen.width,
-                          wp.height / self._screen.height)
+            wp.zoom_to(min(wp.width / self._screen.width,
+                           wp.height / self._screen.height))
         elif key == '!':
             # zoom to fit
-            w_rel = self._screen.width / wp.width
-            h_rel = self._screen.height / wp.height
-            wp.zoom = min(w_rel, h_rel) / max(w_rel, h_rel)
+            w_rel = self._screen.width / wp.transformed_width
+            h_rel = self._screen.height / wp.transformed_height
+            wp.zoom_to(min(w_rel, h_rel) / max(w_rel, h_rel))
         elif key == '0':
             # zoom to fill (default)
-            del wp.zoom
-            del wp.x_offset
-            del wp.y_offset
-            del wp.transformations
+            wp.clear_transformation()
         elif key == 't':
             if wp.tags:
                 self._tags.text += ","
@@ -257,7 +255,7 @@ class ScreenWidget(WidgetWrap):
             return
         elif key == 'enter' and self._tags.editable:
             self._tags.editable = False
-            wp.tags = self._tags.text
+            wp.set_tags(self._tags.text)
         elif key == 'esc' and self._tags.editable:
             self._tags.editable = False
             self._tags.text = ",".join(wp.tags)

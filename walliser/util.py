@@ -16,66 +16,6 @@ def clamp(min, max, val):
     return min if val < min else max if val > max else val
 
 
-class Observable:
-    """An observable object calls registered callbacks whenever one of its
-    @observed methods (including @property setters) is called.
-    """
-
-    __slots__ = ('_observers',)
-    def __init__(self):
-        self._observers = set()
-
-    def subscribe(self, subscriber):
-        """Add a subscriber to this object's observer list"""
-        self._observers.add(subscriber)
-
-    def unsubscribe(self, subscriber):
-        """Remove a subscriber from this object's observer list"""
-        self._observers.remove(subscriber)
-
-    def _notify_observers(self, method_name, *args, **kwargs):
-        for observer in self._observers:
-            observer.notify(self, method_name, *args, **kwargs)
-
-def observed(method):
-    """Decorator to be added on methods that should notify observers
-    after they were executed."""
-    @wraps(method)
-    def wrapper(self, *args, **kwargs):
-        method(self, *args, **kwargs)
-        self._notify_observers(method.__name__, *args, **kwargs)
-    return wrapper
-
-def observed_property(property_name, default, cast=None):
-    """Default must be immutable."""
-    hidden_property_name = "_" + property_name
-    if cast is None:
-        if cast is False:
-            cast = lambda x: x
-        else:
-            cast = type(default)
-    def getter(self):
-        try:
-            return getattr(self, hidden_property_name)
-        except AttributeError:
-            return default
-    def deleter(self):
-        try:
-            delattr(self, hidden_property_name)
-        except AttributeError:
-            pass
-    def setter(self, value):
-        value = cast(value)
-        if value == default:
-            try:
-                delattr(self, hidden_property_name)
-            except AttributeError:
-                pass
-        else:
-            setattr(self, hidden_property_name, value)
-    return property(getter, observed(setter), observed(deleter))
-
-
 def get_file_hash(path, algorithm="sha1", blocksize=1024*1024):
     hasher = hashlib.new(algorithm)
     with open(path, 'rb') as f:

@@ -54,9 +54,14 @@ class Config:
             raise ValueError("Can not disable readonly on config after initialization.")
         self._readonly = True
 
-    def __init__(self, filename, readonly=False):
+    def __init__(self, filename=None, readonly=False):
+        if filename:
+            self._filename = filename
+        elif 'WALLISER_CONFIG_FILE' in os.environ:
+            self._filename = os.environ['WALLISER_CONFIG_FILE']
+        else:
+            self._filename = os.environ['HOME'] + "/.walliser.json"
         self._readonly = readonly
-        self._filename = filename
         self._data = self._load_data()
 
     def _load_data(self):
