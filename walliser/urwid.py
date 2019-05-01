@@ -360,7 +360,7 @@ class Ui:
             key_number = _shift_number_keys[key]
             self._scrctrl.move_wallpaper(current_screen_idx, key_number)
         else:
-            log.info("unhandled key: '%s'", key)
+            log.debug("unhandled key: '%s'", key)
             return
         for screen_widget in self._screens:
             screen_widget.update()

@@ -26,25 +26,6 @@ Image.MAX_IMAGE_PIXELS = 16000**2
 log = logging.getLogger(__name__)
 
 
-def find_images(patterns):
-    """Returns an iterable of wallpaper paths matching the given pattern(s).
-    Doesn't clear duplicates (use a set).
-    """
-    for pattern in patterns:
-        pattern = os.path.expanduser(pattern)
-        for path in glob(pattern):
-            if os.path.isfile(path):
-                yield os.path.realpath(path)
-            else:
-                yield from images_in_dir(path)
-
-def images_in_dir(root_dir):
-    """Helper function to get a list of all wallpapers in a directory"""
-    for directory, _, files in os.walk(root_dir):
-        for f in files:
-            yield os.path.realpath(os.path.join(directory, f))
-
-
 class Transformation(namedtuple("Transformation",
         "horizontal vertical rotate zoom x_offset y_offset")):
 
@@ -113,7 +94,7 @@ class Wallpaper(Model, Observable):
 
     _tablename_ = "wallpaper"
 
-    hash = Column("TEXT", mutable=False, nullable=False)
+    hash = Column("TEXT", primary=True, mutable=False, nullable=False)
     format = Column("INTEGER", mutable=False, nullable=False)
     height = Column("INTEGER", mutable=False, nullable=False)
     width = Column("INTEGER", mutable=False, nullable=False)
@@ -123,7 +104,7 @@ class Wallpaper(Model, Observable):
 
     rating = Column("INTEGER", default=0)
     purity = Column("INTEGER", default=0)
-    views = Column("INTEGER", default=0, observed=False)
+    views = Column("INTEGER", default=0)
 
     transformation = Column(Transformation, default=Transformation.noop)
 
@@ -213,7 +194,7 @@ class Wallpaper(Model, Observable):
             else:
                 invalid_paths.append(path)
         self.paths = tuple(remaining)
-        self.invalid_paths = frozenset(invalid)
+        self.invalid_paths |= frozenset(invalid)
         if not remaining:
             log.warning("No valid paths left for wallpaper '%s'", self.hash)
             return False
@@ -251,81 +232,71 @@ class Wallpaper(Model, Observable):
         return path
 
 
-def make_query(expression):
-    """Turn an expression into a function, assigning Wallpaper properties to
-    (possibly abbreviated) variable names as needed. Unknown names are
-    interpreted as tags."""
-    raise NotImplemented
-
-    attributes = ("views", "rating", "purity", "tags",
-                  "width", "height", "format",
-                  "added", "modified",
-                  "x_offset", "y_offset", "zoom", "transformations")
-    builtins = {"min": min, "max": max, "sum": sum, "map": map,
-                "int": int, "bool": bool, "str": str, "repr": repr,
-                "parse_relative_time": parse_relative_time}
-    keywords = set(builtins) | {"and", "or", "not", "lambda",
-                                "if", "then", "else", "for", "in",
-                                "True", "False", "None"}
+def _expand_sql_query(query):
+    """Expand abbreviated names in a sql condition."""
+    if query is None:
+        return "1"
+    columns = Wallpaper._columns_.keys()
+    keywords = {"and", "or", "in", "like"}
     def replacer(match):
         """Replace abbreviated attributes and tags."""
         word = match.group(0)
-        if word in keywords:
+        lword = word.lower()
+        if lword in keywords:
             return word
-        for attr in attributes:
-            if attr.startswith(word):
-                return "wp." + attr
+        for col in columns:
+            if col.startswith(lword):
+                return Wallpaper._tablename_ + "." + col
         if re.fullmatch(r"t(:?\d+[sMHdwmy])+", word):
-            return f"parse_relative_time('{word[1:]}')"
-        return f"('{word}' in wp.tags)"
+            return "'" + str(parse_relative_time(word[1:])) + "'"
+        return f"{Wallpaper._tablename_}.tags LIKE '%{word}%'"
+    return re.sub(r"[A-Za-z][A-Za-z0-9_]*", replacer, query)
 
-    expression = re.sub(r"[A-Za-z][A-Za-z0-9_]*", replacer, expression)
-    definition = "lambda wp: bool({})".format(expression)
-    try:
-        # Let's hope this is safe. Mainly guard against accidents.
-        query = eval(definition, {"__builtins__": builtins})
-    except SyntaxError:
-        raise SyntaxError("Invalid query expression `{}`.".format(expression)) from None
-    return query, expression
+
+def _find_files(sources):
+    """
+    Iterate wallpaper paths matching the given pattern(s).
+    Doesn't clear duplicates (use a set).
+    """
+    for pattern in map(os.path.expanduser, sources):
+        for path in glob(pattern):
+            if os.path.isfile(path):
+                yield os.path.realpath(path)
+            else:
+                for directory, _, files in os.walk(path):
+                    for file in files:
+                        yield os.path.realpath(os.path.join(directory, file))
 
 
 class WallpaperController:
-    """Manages a collection of relevant wallpapers and takes care of some
-    config related IO (TODO: isolate the IO)."""
+    """
+    Manages a collection of relevant wallpapers and takes care of some
+    config related IO (TODO: isolate the IO).
+    """
 
-    def __init__(self, config, sources=None, query="True", sort=None, reverse=False):
-        # self._config = config
-        # self._updated_wallpapers = set()
-        # self._updates_saved = 0
+    def __init__(self, sources=None, query=None, sort=None, reverse=False):
+        self._updated_wallpapers = set()
+        self._updates_saved = 0
 
-        # try:
-        #     config_data = config["wallpapers"]
-        # except (TypeError, KeyError):
-        #     config_data = {}
+        if sources:
+            paths = set(_find_files(sources))
+            self._add_wallpaper_paths(paths)
+        if query:
+            query = _expand_sql_query(query)
 
-        # query, query_expression = make_query(query)
-        # log.debug("Using query `%s`", query_expression)
+        wallpapers = set(Wallpaper.get(query))
+        if sources:
+            wallpapers = self._filter_by_paths(wallpapers, paths)
 
-        # if sources:
-        #     wallpapers = self.wallpapers_from_paths(sources, config_data)
-        # else:
-        #     wallpapers = (Wallpaper(hash=hash, **data)
-        #                   for hash, data in config_data.items()
-        #                   if data['paths'])
-
-        self.wallpapers = list(Wallpaper.get())
-        # for wp in set(filter(query, wallpapers)):
-        for wp in self.wallpapers:
-            wp.subscribe(self)
-
-        # if self._updated_wallpapers:
-        #     log.info("Found %d new wallpapers.", len(self._updated_wallpapers))
+        self.wallpapers = list(wallpapers)
 
         if not self.wallpapers:
-            query_expression = str(NotImplemented)
-            raise ValueError('No matching wallpapers found. Query: "' + query_expression + '"')
+            raise ValueError(f"No matching wallpapers found for query '{query}'")
         else:
             log.debug("Found %d matching wallpapers.", len(self.wallpapers))
+
+        for wp in self.wallpapers:
+            wp.subscribe(self)
 
         if sort:
             log.debug(f"sorting by {sort}")
@@ -333,66 +304,62 @@ class WallpaperController:
         else:
             random.shuffle(self.wallpapers)
 
-    def wallpapers_from_paths(self, sources, config_data={}):
+    def _filter_by_paths(self, wallpapers, paths):
+        paths = set(paths)
+        for wp in wallpapers:
+            if set(wp.paths) & paths:
+                yield wp
+
+    def _add_wallpaper_paths(self, paths):
         """Iterate wallpapers in given paths, including new ones."""
-        raise NotImplemented
-        known_paths = {path: hash for hash, data in config_data.items()
-                                    for path in data["paths"] }
+        wallpapers = {wp.hash: wp for wp in Wallpaper.get()}
+        known_paths = set()
+        for wp in wallpapers.values():
+            known_paths.update(wp.paths)
+        new_paths = paths - known_paths
+        log.debug("%s known wallpapers", len(wallpapers))
+        log.debug("%s known paths", len(known_paths))
+        log.debug("%s supplied paths", len(paths))
+        log.debug("%s new paths", len(new_paths))
+
+        new_wallpapers = set()
         now = datetime.now()
-        for path in progress(set(find_images(sources))):
-            if path in known_paths:
-                hash = known_paths[path]
-                data = config_data[hash]
-                # check for outdated data formatting
-                updated = False
-                if "added" not in data:
-                    updated = True
-                    data["added"] = data["modified"] = now
-            else: # new path
-                updated = True
+        for path in progress(new_paths):
+            try:
+                img = Image.open(path)  # Do this first to abort immediately
+                                        # for non-images.
+                file_hash = get_file_hash(path)
                 try:
-                    img = Image.open(path) # Do this first to abort immediately
-                                           # for non-images.
-                    hash = get_file_hash(path)
-                    if hash in config_data:
-                        log.debug("Adding path of know wallpaper '%s'", path)
-                        data = config_data[hash].copy()
-                        data["paths"].append(path)
-                        data["paths"].sort()
-                    else:  # new file
-                        log.debug("Added new wallpaper '%s'", path)
-                        data = {
-                            "paths": [path],
-                            "format": img.format,
-                            "width": img.size[0],
-                            "height": img.size[1],
-                            "added": now,
-                            "modified": now,
-                        }
-                except IOError:
-                    log.warning("Can't open '%s'", path)
-                    continue
-            wp = Wallpaper(hash=hash, **data)
-            if updated:
-                self._updated_wallpapers.add(wp)
-            yield wp
+                    wp = wallpapers[file_hash]
+                    wp.paths = (*wp.paths, path)
+                    self._updated_wallpapers.add(wp)
+                except KeyError:
+                    new_wallpapers.add(Wallpaper(hash=file_hash,
+                                             paths=(path,),
+                                             format=img.format,
+                                             width=img.size[0],
+                                             height=img.size[1],
+                                             added=now))
+            except IOError:
+                log.warning("Can't open '%s'", path)
+                continue
+        if new_wallpapers:
+            log.info(f"Added {len(new_wallpapers)} new wallpapers.")
+            Wallpaper.store_many(new_wallpapers)
+        self.save_updates()
+
 
     def notify(self, wallpaper, *_):
-        ...
-        # self._updated_wallpapers.add(wallpaper)
+        self._updated_wallpapers.add(wallpaper)
 
     def save_updates(self):
-        raise NotImplemented
         if not self._updated_wallpapers:
             return
         updates_count = len(self._updated_wallpapers)
-        self._config["wallpapers"].update((wp.hash, wp.to_json())
-                                         for wp in self._updated_wallpapers)
-        self._config.save()
+        Wallpaper.save_many(self._updated_wallpapers)
         self._updated_wallpapers = set()
         self._updates_saved += updates_count
-        log.info("%d update%s %ssaved (%d total)",
+        log.info("%d update%s saved (%d total)",
                  updates_count,
                  "" if updates_count == 1 else "s",
-                 "NOT " if self._config.readonly else "",
                  self._updates_saved)

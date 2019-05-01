@@ -3,14 +3,12 @@
 """Walliser - A tool for cycling through wallpapers.
 
 Usage:
-  walliser [-q QUERY] [-s KEY [--reverse]] [-i SECONDS]
-           [-c CONFIG_FILE] [-d DATABASE] [--readonly]
+  walliser [-l | -t | -i SECONDS]
+           [-q QUERY] [-s KEY [--reverse]]
+           [-d DATABASE] [--readonly]
            [--quiet | -v | -vv | -vvv]
            [--] [FILES/DIRS ...]
-  walliser (--list | --list-tags) [-c CONFIG_FILE] [-d DATABASE]
-           [-q QUERY] [-s KEY [--reverse]] [--] [FILES/DIRS ...]
-  walliser --maintenance [-c CONFIG_FILE] [-d DATABASE] [--readonly]
-           [--quiet | -v | -vv | -vvv]
+  walliser --maintenance [-d DATABASE] [--readonly] [--quiet | -v | -vv | -vvv]
   walliser -h | --help | --version
 
 Options:
@@ -23,10 +21,6 @@ Options:
                  Cycle through wallpapers in order sorted by attribute KEY
          --reverse
                  Sort backwards
-  -c CONFIG_FILE --config-file CONFIG_FILE
-                 Read and store settings in this file. If not specified
-                 will use WALLISER_CONFIG_FILE from environment variable or
-                 default to ~/.walliser.json instead.
   -d DATABASE --database DATABASE
                  Read and store wallpaper data in this file. If not specified
                  will use WALLISER_DATABASE_FILE from environment variable or
@@ -52,7 +46,6 @@ from docopt import docopt
 
 from . import __version__, database
 from .util import BufferedLogHandler, FancyLogFormatter
-from .config import Config
 from .wallpaper import WallpaperController
 from .screen import ScreenController
 from .urwid import Ui
@@ -88,33 +81,27 @@ def main():
     log.debug("Starting up on python %s.", sys.version)
 
     try:
-        config = Config(args["--config-file"], readonly=args["--readonly"])
         database.initialize(args["--database"])
 
         if args["--maintenance"]:
-            wpctrl = WallpaperController(config=config, query="True")
+            wpctrl = WallpaperController()
             delete_hashes = set()
             for wp in wpctrl.wallpapers:
                 if not wp.check_paths() and wp.rating <= 0:
                     delete_hashes.add(wp.hash)
-            # wpctrl.save_updates()
+            wpctrl.save_updates()
             log.info("Deleting {} dead entries.".format(len(delete_hashes)))
-            for hash in delete_hashes:
-                del config._data["wallpapers"][hash]
-            return 0
+            log.warning("Deleting dead entries is not implemented for sqlite")
+            return 1
 
-
-        wpctrl = WallpaperController(config=config,
-                                     sources=args["FILES/DIRS"],
+        wpctrl = WallpaperController(sources=args["FILES/DIRS"],
                                      query=args["--query"],
                                      sort=args["--sort"],
                                      reverse=args["--reverse"])
         if args["--list"]:
-            config.readonly = True
             for wp in wpctrl.wallpapers:
                 print(wp.path)
         elif args["--list-tags"]:
-            config.readonly = True
             tag_counts = Counter()
             for wp in wpctrl.wallpapers:
                 tag_counts.update(wp.tags)
@@ -127,7 +114,7 @@ def main():
             scrctrl = ScreenController(wpctrl)
             scrctrl.display_wallpapers()
             Ui(scrctrl, wpctrl).run_loop()
-            # wpctrl.save_updates()
+            wpctrl.save_updates()
         return 0
     except (KeyboardInterrupt, SystemExit):
         return 0

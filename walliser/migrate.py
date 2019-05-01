@@ -15,7 +15,7 @@ from .progress import progress
 def wallpapers():
     """collect wallpapers from old config and convert data structure"""
     config = Config(readonly=True)
-    for hash, wp_data in progress(config["wallpapers"].items()):
+    for hash, data in progress(config["wallpapers"].items()):
         wp = Wallpaper(hash=hash, **data)
         wp.transformation = Transformation(
             *getattr(wp, "transformations", (False, False, 0)),
