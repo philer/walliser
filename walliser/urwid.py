@@ -214,8 +214,8 @@ class ScreenWidget(WidgetWrap):
         elif key == 'Z': wp.zoom_by(.2)
         elif key == 'u': wp.zoom_by(-.05)
         elif key == 'U': wp.zoom_by(-.2)
-        elif key == 'r': wp.rotate(+90)
-        elif key == 'R': wp.rotate(-90)
+        elif key == 'r': wp.rotate_by(+90)
+        elif key == 'R': wp.rotate_by(-90)
         elif key == 'f': wp.flip_horizontal()
         elif key == 'F': wp.flip_vertical()
         elif key == 'h' or key == 'left':
