@@ -167,10 +167,10 @@ class Wallpaper(Model, Observable):
         self.transformation = self.transformation.rotate_by(degree)
 
     def flip_vertical(self):
-        self.transformation = self.transformation.flip_vertical(degree)
+        self.transformation = self.transformation.flip_vertical()
 
     def flip_horizontal(self):
-        self.transformation = self.transformation.flip_horizontal(degree)
+        self.transformation = self.transformation.flip_horizontal()
 
     def zoom_by(self, factor):
         self.transformation = self.transformation.zoom_by(factor)
