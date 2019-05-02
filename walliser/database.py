@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Simple ORM for a small hobby project.
+Inspired by SQLAlchemy and dataclasses.
 
 TODO:
     - read-only mode
@@ -47,13 +48,10 @@ def _itercursor(cursor):
 @dataclass
 class Column:
     """
-    Descriptor for Model attributes (sql table columns).
-    Heavily inspired by dataclass and SQLAlchemy.
-
+    Descriptor for model attributes (i.e. table columns).
     Not all column definition capabilities of sql/sqlite are mapped here,
     most importantly constraints.
     """
-
     type: str
     name: str = None
     default: Any = None
@@ -75,15 +73,15 @@ class Column:
             sqlite3.register_adapter(cls, cls._sqlite_adapt_)
             sqlite3.register_converter(self.type, cls._sqlite_convert_)
         else:
-            raise TypeError(f"Column type must be 'str' or 'type' for column"
+            raise TypeError(f"Column type must be 'str' or 'type' for column "
                             f"'{self.name}' of class '{model.__class__.__name__}'")
 
     def __get__(self, model, cls=None):
-        return model._column_values_[self.name]
+        return model._column_values_.get(self.name, self.default)
 
     def __set__(self, model, value):
         if not self.mutable:
-            raise TypeError(f"Column '{self.name}' of class"
+            raise TypeError(f"Column '{self.name}' of class "
                             f"'{model.__class__.__name__}' is immutable.")
         if model._column_values_[self.name] != value:
             model._updated_columns_.add(self.name)
@@ -176,16 +174,15 @@ class Model:
     def __init__(self, **kwargs):
         super().__init__()
         self._column_values_ = colvals = dict()
-        # for name, value in zip(self._columns, args):
-        #     colvals[name] = value
         for name, column in self._columns_.items():
             try:
                 colvals[name] = kwargs[name]
             except KeyError:
-                colvals[name] = column.default
+                pass  # rely on Column.__get__ to supply the default
+                # colvals[name] = column.default
             if colvals[name] is None and not column.nullable:
-                raise TypeError("Column '{}' of class '{}' cannot be NULL/None."
-                                .format(column.name, self.__class__.__name__))
+                raise TypeError(f"Column '{column.name}' of class "
+                                f"'{self.__class__.__name__}' cannot be NULL/None.")
         self._updated_columns_ = set()
 
     @classmethod
