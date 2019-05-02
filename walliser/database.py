@@ -47,17 +47,20 @@ def _itercursor(cursor):
 @dataclass
 class Column:
     """
-    Descriptor for Model attributes.
+    Descriptor for Model attributes (sql table columns).
     Heavily inspired by dataclass and SQLAlchemy.
+
+    Not all column definition capabilities of sql/sqlite are mapped here,
+    most importantly constraints.
     """
 
-    # TODO PRIMARY KEY, AUTOINCREMENT, UNIQUE
     type: str
     name: str = None
     default: Any = None
     nullable: bool = True
     primary: bool = False
-    # unique: bool = False
+    autoincrement: bool = False
+    unique: bool = False
     mutable: bool = True
     observed: bool = True
 
@@ -72,7 +75,7 @@ class Column:
             sqlite3.register_adapter(cls, cls._sqlite_adapt_)
             sqlite3.register_converter(self.type, cls._sqlite_convert_)
         else:
-            raise TypeError("Column type must be 'str' or 'type' for column"
+            raise TypeError(f"Column type must be 'str' or 'type' for column"
                             f"'{self.name}' of class '{model.__class__.__name__}'")
 
     def __get__(self, model, cls=None):
@@ -103,16 +106,24 @@ class Column:
             cls._primary_ = name
 
     def to_sql(self):
-        sql = self.name + " " + self.type
+        """Build a column definition for use in CREATE TABLE."""
+        # https://www.sqlite.org/draft/syntax/column-constraint.html
+        sql = f"{self.name} {self.type}"
+        if self.primary:
+            sql += " PRIMARY KEY"
+            if self.autoincrement:
+                sql += " AUTOINCREMENT"
         if not self.nullable:
             sql += " NOT NULL"
+        if self.unique:
+            sql += " UNIQUE"
         if self.default:
             sql += " DEFAULT "
-            if self.type in {"integer", "real"}:
+            if self.type in {"INTEGER", "REAL"}:
                 sql += self.default
             else:
                 # let's assume we don't have quotes in there
-                sql += "'" + str(self.default) + "'"
+                sql += f"'{str(self.default)}'"
         return sql
 
 
