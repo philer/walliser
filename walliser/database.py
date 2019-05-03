@@ -10,7 +10,7 @@ TODO:
 
 import os
 from dataclasses import dataclass
-from typing import Any, Mapping, Set, Tuple
+from typing import Any, Union, Mapping, Set, Tuple
 import logging
 
 import sqlite3
@@ -37,13 +37,6 @@ sqlite3.register_adapter(frozenset, adapt_sequence)
 sqlite3.register_converter("TUPLE", convert_tuple)
 sqlite3.register_converter("FROZENSET", convert_set)
 
-def _itercursor(cursor):
-    """Generator for comfortably iterating cursor results."""
-    result = cursor.fetchone()
-    while result is not None:
-        yield result
-        result = cursor.fetchone()
-
 
 @dataclass
 class Column:
@@ -52,7 +45,7 @@ class Column:
     Not all column definition capabilities of sql/sqlite are mapped here,
     most importantly constraints.
     """
-    type: str
+    type: Union[str, type]
     name: str = None
     default: Any = None
     nullable: bool = True
@@ -73,25 +66,32 @@ class Column:
             sqlite3.register_adapter(cls, cls._sqlite_adapt_)
             sqlite3.register_converter(self.type, cls._sqlite_convert_)
         else:
-            raise TypeError(f"Column type must be 'str' or 'type' for column "
-                            f"'{self.name}' of class '{model.__class__.__name__}'")
+            raise AttributeError(f"Column type must be 'str' or 'type' for "
+                                 f"column '{self.name}' of class "
+                                 f"'{model.__class__.__name__}'")
 
     def __get__(self, model, cls=None):
         return model._column_values_.get(self.name, self.default)
 
     def __set__(self, model, value):
         if not self.mutable:
-            raise TypeError(f"Column '{self.name}' of class "
-                            f"'{model.__class__.__name__}' is immutable.")
+            raise AttributeError(f"Column '{self.name}' of class "
+                                 f"'{model.__class__.__name__}' is immutable.")
+        if value is None and not self.nullable:
+            raise AttributeError(f"Column '{self.name}' of class "
+                                 f"'{model.__class__.__name__}' is not nullable.")
         if model._column_values_[self.name] != value:
             model._updated_columns_.add(self.name)
             model._column_values_[self.name] = value
             if self.observed:
-                model._notify_observers_(self.name, value)
+                try:
+                    model._notify_observers_(self.name, value)
+                except AttributeError:
+                    raise TypeError(f"Model subclass '{model.__class__.__name__}' "
+                                    "needs to be Observable to use observed Columns.")
 
     def __delete__(self, model):
-        raise TypeError(f"Can't delete Column '{self.name}' of"
-                        f"class '{model.__class__.__name__}'")
+        self.__set__(model, None)
 
     def __set_name__(self, cls, name):
         self.name = name
@@ -119,9 +119,10 @@ class Column:
             sql += " DEFAULT "
             if self.type in {"INTEGER", "REAL"}:
                 sql += self.default
-            else:
-                # let's assume we don't have quotes in there
-                sql += f"'{str(self.default)}'"
+            elif hasattr(self.default, "_sqlite_adapt_"):
+                sql += f"'{self.default._sqlite_adapt_().decode('ascii')}'"
+            else:  # everything else is hopefully a regular string
+                sql += f"'{self.default}'"
         return sql
 
 
@@ -179,8 +180,7 @@ class Model:
                 colvals[name] = kwargs[name]
             except KeyError:
                 pass  # rely on Column.__get__ to supply the default
-                # colvals[name] = column.default
-            if colvals[name] is None and not column.nullable:
+            if not column.nullable and name not in colvals:
                 raise TypeError(f"Column '{column.name}' of class "
                                 f"'{self.__class__.__name__}' cannot be NULL/None.")
         self._updated_columns_ = set()
@@ -206,23 +206,23 @@ class Model:
 
     def store(self):
         """Insert this object into the database."""
+        data = {name: value for name, value in self._column_values_.items()
+                if value is not None}
         sql = ("INSERT INTO " + self._tablename_ + " ("
              + ", ".join(data)
              + ") VALUES ("
              + ",".join(f":{name}" for name in data)
              + ");")
-        data = {name: value for name, value in self._column_values_.items()
-                if value is not None}
         log.debug(sql)
         self._connection_.execute(sql, data)
         self._connection_.commit()
 
     @classmethod
     def store_many(cls, models):
+        data = (model._column_values_ for model in models)
         sql = ("INSERT INTO " + cls._tablename_ + " VALUES ("
              + ",".join(f":{name}" for name in cls._columns_)
              + ");")
-        data = (model._column_values_ for model in models)
         log.debug(sql)
         cls._connection_.executemany(sql, data)
         cls._connection_.commit()
@@ -252,7 +252,7 @@ class Model:
     def get(cls, query: str="1", parameters=()):
         sql = "SELECT * FROM {} WHERE {};".format(cls._tablename_, query)
         log.debug(sql)
-        for result in _itercursor(cls._connection_.execute(sql, parameters)):
+        for result in cls._connection_.execute(sql, parameters):
             yield cls._make(result)
 
     @classmethod
@@ -274,21 +274,25 @@ class Model:
             return None
 
 
-def initialize(database=None):
+def initialize(database=None, reconnect=False):
     """
     Create a connection used for all subsequent database interaction.
     Needs to be called after all Model subclasses were created but before
     any further database interaction can happen.
     """
+    if not reconnect and Model._connection_ is not None:
+        raise Exception("Database connection has already been initialized.")
+
     if database is None:
         if 'WALLISER_DATABASE_FILE' in os.environ:
             database = os.environ['WALLISER_DATABASE_FILE']
         else:
             database = os.environ['HOME'] + "/.walliser.sqlite"
     needs_tables = database == ':memory:' or not os.path.isfile(database)
+
     log.debug(f"Connecting to database '{database}'")
     Model._connection_ = sqlite3.connect(database, detect_types=sqlite3.PARSE_DECLTYPES)
     if needs_tables:
-        log.info("Creating new database")
+        log.info(f"Creating tables in database '{database}'")
         for model in Model._subclasses_:
             model.create_table()
