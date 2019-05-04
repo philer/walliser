@@ -6,6 +6,7 @@ import gzip
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
@@ -21,12 +22,12 @@ def dict_update_recursive(a, b):
         else:
             a[key] = b[key]
 
-def _open_config_file(filename, mode="r"):
+def _open_config_file(path, mode="r"):
     """Open a file respecting .gz file endings."""
-    if filename[-3:] == ".gz":
-        return gzip.open(filename, mode, encoding="UTF-8")
+    if path[-3:] == ".gz":
+        return gzip.open(path, mode, encoding="UTF-8")
     else:
-        return open(filename, mode, encoding="UTF-8")
+        return open(path, mode, encoding="UTF-8")
 
 def _serialize(obj):
     """Serialize things we know how to serialize."""
@@ -54,25 +55,25 @@ class Config:
             raise ValueError("Can not disable readonly on config after initialization.")
         self._readonly = True
 
-    def __init__(self, filename=None, readonly=False):
-        if filename:
-            self._filename = filename
+    def __init__(self, path=None, readonly=False):
+        if path:
+            self._path = path
         elif 'WALLISER_CONFIG_FILE' in os.environ:
-            self._filename = os.environ['WALLISER_CONFIG_FILE']
+            self._path = Path(os.environ['WALLISER_CONFIG_FILE']).resolve()
         else:
-            self._filename = os.environ['HOME'] + "/.walliser.json"
+            self._path = Path.home() / ".config/walliser/config.json"
         self._readonly = readonly
         self._data = self._load_data()
 
     def _load_data(self):
         try:
-            with _open_config_file(self._filename, "rt") as config_file:
+            with _open_config_file(self._path, "rt") as config_file:
                 return json.load(config_file, object_hook=_deserialize)
         except FileNotFoundError:
-            log.info("No config found at '%s'", self._filename)
+            log.info("No config found at '%s'", self._path)
         except ValueError: # bad json
             # only raise if the file was not empty (i.e. actually malformed)
-            if os.stat(self._filename).st_size != 0:
+            if os.stat(self._path).st_size != 0:
                 raise
         return {"modified": datetime.min, "wallpapers": {}}
 
@@ -87,6 +88,7 @@ class Config:
         """Save current configuration into given file."""
         if self.readonly:
             return
+
         data = self._load_data()
         if data["modified"] > self._data["modified"]:
             log.info("Config has been outdated since startup.")
@@ -95,11 +97,14 @@ class Config:
             data = self._data
         data["modified"] = self._data["modified"] = datetime.now()
 
-        # one backup per day keeps sorrow at bay
-        backup = self._filename + f".{datetime.now():%Y-%m-%d}.backup"
-        if os.path.isfile(self._filename) and not os.path.isfile(backup):
-            log.info(f"Creating config backup '{backup}'")
-            shutil.copyfile(self._filename, backup)
+        if self._path.is_file()
+            # one backup per day keeps sorrow at bay
+            backup = f"{self._path}.{datetime.now():%Y-%m-%d}.backup"
+            if not os.path.isfile(backup):
+                log.debug(f"Creating config backup '{backup}'")
+                shutil.copyfile(self._path, backup)
+        else:
+            self._path.mkdir(parents=True, exist_ok=True)
 
-        with _open_config_file(self._filename, "wt") as config_file:
+        with _open_config_file(self._path, "wt") as config_file:
             json.dump(data, config_file, default=_serialize, separators=(",", ":"))

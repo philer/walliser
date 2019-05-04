@@ -25,7 +25,7 @@ Options:
                  Read and store wallpaper data in this file. If not specified
                  will use WALLISER_DATABASE_FILE from environment variable or
                  default to ~/.walliser.sqlite instead.
-     --readonly  Don't write anything to the configuration file.
+     --readonly  Don't write anything to the database/configuration file.
   -l --list      List all wallpaper paths which match a given query
   -t --list-tags
                  Show a list of all tags with number of wallpapers and exit.
@@ -81,7 +81,7 @@ def main():
     log.debug("Starting up on python %s.", sys.version)
 
     try:
-        database.initialize(args["--database"])
+        database.initialize(args["--database"], readonly=args["--readonly"])
 
         if args["--maintenance"]:
             wpctrl = WallpaperController()

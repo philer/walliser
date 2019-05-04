@@ -133,6 +133,13 @@ class Wallpaper(Model, Observable):
         # TODO apply zoom?
         return self.width if self.transformation.rotate % 180 else self.height
 
+    def _update_modified(self, *_):
+        self.modified = datetime.now()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.subscribe(self._update_modified)
+
     def __repr__(self):
         return (self.__class__.__name__
                 + ":" + self.hash

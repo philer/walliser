@@ -8,19 +8,32 @@ TODO:
     - relations
 """
 
+__all__ = 'Model', 'Column', 'initialize'
+
 import os
+import shutil
+from pathlib import Path
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Any, Union, Mapping, Set, Tuple
 import logging
-
 import sqlite3
 import json
 
 log = logging.getLogger(__name__)
 
 
-__all__ = 'Model', 'Column', 'initialize'
+# Don't commit anything to the database.
+_readonly = False
 
+def _commit_or_rollback(connection):
+    """Commit unless in readonly mode, in which case rollback."""
+    if _readonly:
+        log.debug("ROLLBACK")
+        connection.rollback()
+    else:
+        log.debug("COMMIT")
+        connection.commit()
 
 def adapt_sequence(items):
         return json.dumps(tuple(items))
@@ -137,7 +150,13 @@ class Observable:
 
     def subscribe(self, subscriber):
         """Add a subscriber to this object's observer list"""
-        self._observers_.add(subscriber)
+        if hasattr(subscriber, "notify"):
+            self._observers_.add(subscriber.notify)
+        elif callable(subscriber):
+            self._observers_.add(subscriber)
+        else:
+            raise TypeError(f"Subscriber '{subscriber}' needs to be callable "
+                            "or have a .notify method")
 
     def unsubscribe(self, subscriber):
         """Remove a subscriber from this object's observer list"""
@@ -145,7 +164,7 @@ class Observable:
 
     def _notify_observers_(self, method_name, *args, **kwargs):
         for observer in self._observers_:
-            observer.notify(self, method_name, *args, **kwargs)
+            observer(self, method_name, *args, **kwargs)
 
 
 class Model:
@@ -170,7 +189,7 @@ class Model:
              + "\n)")
         log.debug(sql)
         cls._connection_.execute(sql)
-        cls._connection_.commit()
+        _commit_or_rollback(cls._connection_)
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -204,7 +223,7 @@ class Model:
                             for name, column in self._columns_.items())
                 + ")")
 
-    def store(self):
+    def store(self, *, _commit=True):
         """Insert this object into the database."""
         data = {name: value for name, value in self._column_values_.items()
                 if value is not None}
@@ -215,17 +234,14 @@ class Model:
              + ");")
         log.debug(sql)
         self._connection_.execute(sql, data)
-        self._connection_.commit()
+        if _commit:
+            _commit_or_rollback(self._connection_)
 
     @classmethod
     def store_many(cls, models):
-        data = (model._column_values_ for model in models)
-        sql = ("INSERT INTO " + cls._tablename_ + " VALUES ("
-             + ",".join(f":{name}" for name in cls._columns_)
-             + ");")
-        log.debug(sql)
-        cls._connection_.executemany(sql, data)
-        cls._connection_.commit()
+        for model in models:
+            model.store(_commit=False)
+        _commit_or_rollback(cls._connection_)
 
     def save(self, *, _commit=True):
         """Insert this object into the database."""
@@ -239,14 +255,14 @@ class Model:
         log.debug("%s %s", sql, data)
         self._connection_.execute(sql, data)
         if _commit:
-            self._connection_.commit()
+            _commit_or_rollback(self._connection_)
         self._updated_columns_ = set()
 
     @classmethod
     def save_many(cls, models):
         for model in models:
             model.save(_commit=False)
-        cls._connection_.commit()
+        _commit_or_rollback(cls._connection_)
 
     @classmethod
     def get(cls, query: str="1", parameters=()):
@@ -274,7 +290,7 @@ class Model:
             return None
 
 
-def initialize(database=None, reconnect=False):
+def initialize(database=None, reconnect=False, readonly=False):
     """
     Create a connection used for all subsequent database interaction.
     Needs to be called after all Model subclasses were created but before
@@ -283,15 +299,36 @@ def initialize(database=None, reconnect=False):
     if not reconnect and Model._connection_ is not None:
         raise Exception("Database connection has already been initialized.")
 
+    global _readonly
+    _readonly = readonly
+    if readonly:
+        log.debug("Initializing database module in readonly mode")
+
     if database is None:
         if 'WALLISER_DATABASE_FILE' in os.environ:
-            database = os.environ['WALLISER_DATABASE_FILE']
+            database = Path(os.environ['WALLISER_DATABASE_FILE']).resolve()
         else:
-            database = os.environ['HOME'] + "/.walliser.sqlite"
-    needs_tables = database == ':memory:' or not os.path.isfile(database)
+            database = Path.home() / ".local/share/walliser/database.sqlite"
+    elif database != ':memory:':
+        database = Path(database).resolve()
+
+    needs_tables = database == ':memory:' or not database.is_file()
+    if readonly and needs_tables:
+        raise Exception(f"Can't create database at '{database}' in read only mode")
+
+    if database != ':memory:' and not readonly:
+        if database.is_file():
+            # one backup per day keeps sorrow at bay
+            backup = f"{database}.{datetime.now():%Y-%m-%d}.backup"
+            if not os.path.isfile(backup):
+                log.debug(f"Creating database backup '{backup}'")
+                shutil.copyfile(database, backup)
+        else:
+            database.parent.mkdir(parents=True, exist_ok=True)
 
     log.debug(f"Connecting to database '{database}'")
     Model._connection_ = sqlite3.connect(database, detect_types=sqlite3.PARSE_DECLTYPES)
+
     if needs_tables:
         log.info(f"Creating tables in database '{database}'")
         for model in Model._subclasses_:
