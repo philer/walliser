@@ -45,8 +45,8 @@ def convert_set(bytestring):
         return frozenset(json.loads(bytestring))
 
 sqlite3.register_adapter(tuple, adapt_sequence)
-sqlite3.register_adapter(list, adapt_sequence)
-sqlite3.register_adapter(set, adapt_sequence)
+# sqlite3.register_adapter(list, adapt_sequence)
+# sqlite3.register_adapter(set, adapt_sequence)
 sqlite3.register_adapter(frozenset, adapt_sequence)
 sqlite3.register_converter("TUPLE", convert_tuple)
 sqlite3.register_converter("FROZENSET", convert_set)
@@ -57,8 +57,8 @@ _native_types = {
     float: "REAL",
     datetime: "TIMESTAMP",
     tuple: "TUPLE",
-    list: "LIST",
-    set: "SET",
+    # list: "LIST",
+    # set: "SET",
     frozenset: "FROZENSET",
 }
 
@@ -96,7 +96,7 @@ class Column:
         if value is None and not self.nullable:
             raise AttributeError(f"Column '{self.name}' of class "
                                  f"'{model.__class__.__name__}' is not nullable.")
-        if model._column_values_[self.name] != value:
+        if self.__get__(model) != value:
             model._updated_columns_.add(self.name)
             model._column_values_[self.name] = value
             if self.observed:

@@ -12,10 +12,10 @@ def wallpapers():
     return (
         Wallpaper(hash="100", format="JPG", height=1080, width=1920,
                   added=datetime.now(), rating=4,
-                  transformation=Transformation(True, False, 180, 1, 100, 0)),
+                  transformation=Transformation(True, False, 90, 1.2, 230, 0)),
         Wallpaper(hash="101", format="PNG", height=1600, width=1200,
                   added=datetime.now(), rating=2, purity=-2,
-                  tags={"tag1", "tag2"}),
+                  tags=frozenset({"tag1", "tag2"})),
     )
 
 def test_model(wallpapers):
@@ -26,7 +26,10 @@ def test_store_get(wallpapers):
     database.initialize(':memory:', reconnect=True)
     for wp in wallpapers:
         wp.store()
-    assert tuple(Wallpaper.get()) == wallpapers
+    for orig, stored in zip(wallpapers, Wallpaper.get()):
+        assert orig == stored
+        for col in Wallpaper._columns_:
+            assert getattr(orig, col) == getattr(stored, col)
 
 
 if __name__ == "__main__":

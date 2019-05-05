@@ -44,16 +44,8 @@ class Transformation(namedtuple("Transformation",
         (True, True, 270): (False, False, 90),
     }
 
-    def __post_init__(self):
-        try:
-            hvr = self._simplify[self[:3]]
-        except KeyError:
-            pass
-        else:
-            return self.__class__(*hvr, self[3:])
-
     def __repr__(self):
-        return "Transform(" + ",".join(map(str, self)) + ")"
+        return "Transformation(" + ",".join(map(str, self)) + ")"
 
     def rotate_by(self, degree):
         return self.__class__(self.horizontal, self.vertical,
@@ -77,14 +69,14 @@ class Transformation(namedtuple("Transformation",
 
     def _sqlite_adapt_(self):
         parts = int(self.horizontal), int(self.vertical), *self[2:]
-        return ";".join(map(str, parts)).encode('ascii')
+        return ";".join(map(str, parts))
 
     @classmethod
     def _sqlite_convert_(cls, bytestring):
         hor, vert, *parts = bytestring.split(b";")
-        hor, vert = hor == "1", vert == "1"
+        hor, vert = hor == b"1", vert == b"1"
         converted = (t(p) for t, p in zip((int, float, int, int), parts))
-        return Transformation(hor, vert, *converted)
+        return cls(hor, vert, *converted)
 
 Transformation.noop = Transformation(False, False, 0, 1, 0, 0)
 
@@ -168,7 +160,7 @@ class Wallpaper(Model, Observable):
 
     def set_tags(self, csv):
         """Set tags via comma separated string."""
-        self.tags = {tag.strip() for tag in csv.split(",")}
+        self.tags = frozenset(tag.strip() for tag in csv.split(","))
 
     def rotate_by(self, degree):
         self.transformation = self.transformation.rotate_by(degree)
@@ -199,7 +191,7 @@ class Wallpaper(Model, Observable):
                 if not os.access(path, os.R_OK):
                     log.warning("No permission to read file '%s'", path)
             else:
-                invalid_paths.append(path)
+                invalid.append(path)
         self.paths = tuple(remaining)
         self.invalid_paths |= frozenset(invalid)
         if not remaining:
