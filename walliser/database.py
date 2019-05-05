@@ -35,6 +35,7 @@ def _commit_or_rollback(connection):
         log.debug("COMMIT")
         connection.commit()
 
+
 def adapt_sequence(items):
         return json.dumps(tuple(items))
 
@@ -50,6 +51,17 @@ sqlite3.register_adapter(frozenset, adapt_sequence)
 sqlite3.register_converter("TUPLE", convert_tuple)
 sqlite3.register_converter("FROZENSET", convert_set)
 
+_native_types = {
+    str: "TEXT",
+    int: "INTEGER",
+    float: "REAL",
+    datetime: "TIMESTAMP",
+    tuple: "TUPLE",
+    list: "LIST",
+    set: "SET",
+    frozenset: "FROZENSET",
+}
+
 
 @dataclass
 class Column:
@@ -58,7 +70,7 @@ class Column:
     Not all column definition capabilities of sql/sqlite are mapped here,
     most importantly constraints.
     """
-    type: Union[str, type]
+    type: type
     name: str = None
     default: Any = None
     nullable: bool = True
@@ -69,19 +81,10 @@ class Column:
     observed: bool = True
 
     def __post_init__(self):
-        # TODO implement datetime converter
-        if isinstance(self.type, str):
-            assert self.type in {"TEXT", "INTEGER", "REAL", "BLOB", "TIMESTAMP",
-                                 "TUPLE", "FROZENSET"}
-        elif isinstance(self.type, type):
-            cls = self.type
-            self.type = cls.__name__.upper()
-            sqlite3.register_adapter(cls, cls._sqlite_adapt_)
-            sqlite3.register_converter(self.type, cls._sqlite_convert_)
-        else:
-            raise AttributeError(f"Column type must be 'str' or 'type' for "
-                                 f"column '{self.name}' of class "
-                                 f"'{model.__class__.__name__}'")
+        if self.type not in _native_types:
+            sqlite3.register_adapter(self.type, self.type._sqlite_adapt_)
+            sqlite3.register_converter(self.type.__name__.upper(),
+                                       self.type._sqlite_convert_)
 
     def __get__(self, model, cls=None):
         return model._column_values_.get(self.name, self.default)
@@ -97,11 +100,7 @@ class Column:
             model._updated_columns_.add(self.name)
             model._column_values_[self.name] = value
             if self.observed:
-                try:
-                    model._notify_observers_(self.name, value)
-                except AttributeError:
-                    raise TypeError(f"Model subclass '{model.__class__.__name__}' "
-                                    "needs to be Observable to use observed Columns.")
+                model._notify_observers_(self.name, value)
 
     def __delete__(self, model):
         self.__set__(model, None)
@@ -113,13 +112,19 @@ class Column:
         except AttributeError:
             cls._columns_ = {name: self}
         if self.primary:
-            assert not hasattr(cls, '_primary_')
+            if hasattr(cls, '_primary_'):
+                raise AttributeError(f"Model subclass '{cls.__name__}' already "
+                                     "has a primary key.")
             cls._primary_ = name
+        if self.observed and not issubclass(cls, Observable):
+            raise TypeError(f"Model subclass '{cls.__name__}' "
+                            "needs to be Observable to use observed Columns.")
 
     def to_sql(self):
         """Build a column definition for use in CREATE TABLE."""
         # https://www.sqlite.org/draft/syntax/column-constraint.html
-        sql = f"{self.name} {self.type}"
+
+        sql = f"{self.name} {_native_types.get(self.type, self.type.__name__.upper())}"
         if self.primary:
             sql += " PRIMARY KEY"
             if self.autoincrement:
@@ -128,13 +133,15 @@ class Column:
             sql += " NOT NULL"
         if self.unique:
             sql += " UNIQUE"
-        if self.default:
+        if self.default is not None:
             sql += " DEFAULT "
-            if self.type in {"INTEGER", "REAL"}:
-                sql += self.default
+            if self.type in {int, float}:
+                sql += str(self.default)
+            elif self.type in {tuple, list, set, frozenset}:
+                sql += f"'{adapt_sequence(self.default)}'"
             elif hasattr(self.default, "_sqlite_adapt_"):
                 sql += f"'{self.default._sqlite_adapt_().decode('ascii')}'"
-            else:  # everything else is hopefully a regular string
+            else:  # everything else should have an appropriate string representation
                 sql += f"'{self.default}'"
         return sql
 
@@ -183,13 +190,10 @@ class Model:
             cls._columns_ = dict()
 
     @classmethod
-    def create_table(cls):
-        sql = ("CREATE TABLE " + cls._tablename_ + " (\n"
-             + ",\n".join("    " + col.to_sql() for col in cls._columns_.values())
-             + "\n)")
-        log.debug(sql)
-        cls._connection_.execute(sql)
-        _commit_or_rollback(cls._connection_)
+    def _to_sql(cls):
+        return ("CREATE TABLE " + cls._tablename_ + " (\n"
+              + ",\n".join("    " + col.to_sql() for col in cls._columns_.values())
+              + "\n)")
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -327,9 +331,15 @@ def initialize(database=None, reconnect=False, readonly=False):
             database.parent.mkdir(parents=True, exist_ok=True)
 
     log.debug(f"Connecting to database '{database}'")
-    Model._connection_ = sqlite3.connect(database, detect_types=sqlite3.PARSE_DECLTYPES)
+    connection = sqlite3.connect(database, detect_types=sqlite3.PARSE_DECLTYPES)
 
     if needs_tables:
         log.info(f"Creating tables in database '{database}'")
+        cursor = connection.cursor()
         for model in Model._subclasses_:
-            model.create_table()
+            sql = model._to_sql()
+            log.debug(sql)
+            cursor.execute(sql)
+        connection.commit()
+
+    Model._connection_ = connection

@@ -94,23 +94,23 @@ class Wallpaper(Model, Observable):
 
     _tablename_ = "wallpaper"
 
-    hash = Column("TEXT", primary=True, mutable=False, nullable=False)
-    format = Column("INTEGER", mutable=False, nullable=False)
-    height = Column("INTEGER", mutable=False, nullable=False)
-    width = Column("INTEGER", mutable=False, nullable=False)
+    hash = Column(str, primary=True, mutable=False, nullable=False)
+    format = Column(int, mutable=False, nullable=False)
+    height = Column(int, mutable=False, nullable=False)
+    width = Column(int, mutable=False, nullable=False)
 
-    added = Column("TIMESTAMP", mutable=False, nullable=False)
-    modified = Column("TIMESTAMP", default=datetime.min, observed=False)
+    added = Column(datetime, mutable=False, nullable=False)
+    modified = Column(datetime, default=datetime.min, observed=False)
 
-    rating = Column("INTEGER", default=0)
-    purity = Column("INTEGER", default=0)
-    views = Column("INTEGER", default=0)
+    rating = Column(int, default=0)
+    purity = Column(int, default=0)
+    views = Column(int, default=0)
 
     transformation = Column(Transformation, default=Transformation.noop)
 
-    paths = Column("TUPLE", default=())
-    invalid_paths = Column("FROZENSET", default=frozenset(), observed=False)
-    tags = Column("FROZENSET", default=frozenset())
+    paths = Column(tuple, default=())
+    invalid_paths = Column(frozenset, default=frozenset(), observed=False)
+    tags = Column(frozenset, default=frozenset())
 
     @property
     def path(self):
