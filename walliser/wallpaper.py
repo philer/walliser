@@ -304,13 +304,14 @@ class WallpaperController:
             random.shuffle(self.wallpapers)
 
     def _filter_by_paths(self, wallpapers, paths):
+        """Filter iterable of wallpapers by given paths."""
         paths = set(paths)
         for wp in wallpapers:
             if set(wp.paths) & paths:
                 yield wp
 
     def _add_wallpaper_paths(self, paths):
-        """Iterate wallpapers in given paths, including new ones."""
+        """Add unknown paths to the database."""
         wallpapers = {wp.hash: wp for wp in Wallpaper.get()}
         known_paths = set()
         for wp in wallpapers.values():

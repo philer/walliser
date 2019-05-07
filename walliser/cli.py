@@ -3,8 +3,8 @@
 """Walliser - A tool for cycling through wallpapers.
 
 Usage:
-  walliser [-l | -t | -i SECONDS]
-           [-q QUERY] [-s KEY [--reverse]]
+  walliser [-l | -t | -b | -i SECONDS]
+           [-q QUERY] [-s KEY [--reverse] | -S]
            [-d DATABASE] [--readonly]
            [--quiet | -v | -vv | -vvv]
            [--] [FILES/DIRS ...]
@@ -21,6 +21,7 @@ Options:
                  Cycle through wallpapers in order sorted by attribute KEY
          --reverse
                  Sort backwards
+  -b --batch     Batch Mode i.e. non-interactive - set wallpapers and exit
   -d DATABASE --database DATABASE
                  Read and store wallpaper data in this file. If not specified
                  will use WALLISER_DATABASE_FILE from environment variable or
@@ -108,6 +109,8 @@ def main():
             max_tag_width = max(map(len, tag_counts))
             for tag, count in tag_counts.most_common():
                 print(f"{tag:>{max_tag_width}} {count}")
+        elif args["--batch"]:
+            ScreenController(wpctrl).display_wallpapers()
         else:
             # run the actual application
             logging_handler.auto_flush = False
