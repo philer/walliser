@@ -12,7 +12,10 @@ def get_screens_data():
     """Iterate data of all active screens by parsing `xrandr --query`."""
     result = subprocess.run(("xrandr", "--query"),
                             check=True, universal_newlines=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                            capture_output=True)
+                            # stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if result.stderr:
+        log.warning(result.stderr)
     # kinda like sscanf
     props = (('output', str), ('primary', bool), ('width', int), ('height', int))
     regex = re.compile(r"^(\S+) connected( primary)? (\d+)x(\d+)",

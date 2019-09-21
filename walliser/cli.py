@@ -101,7 +101,8 @@ def main():
                                      reverse=args["--reverse"])
         if args["--list"]:
             for wp in wpctrl.wallpapers:
-                print(wp.path)
+                if wp.paths:
+                    print(*wp.paths, sep="\n")
         elif args["--list-tags"]:
             tag_counts = Counter()
             for wp in wpctrl.wallpapers:
